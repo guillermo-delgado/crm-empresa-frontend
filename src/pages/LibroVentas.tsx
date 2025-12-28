@@ -194,7 +194,7 @@ export default function LibroVentas() {
   const boxWidth = 45;
   const boxHeight = 18;
 
-  Object.entries(produccionPorRamo).forEach(([ramo, total], index) => {
+  Object.entries(produccionPorRamo).forEach(([ramo, total]) => {
     if (x + boxWidth > 190) {
       x = 14;
       y += boxHeight + 6;

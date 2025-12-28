@@ -1,4 +1,5 @@
 type Venta = {
+    _id: string;
   fecha: string;
   poliza: string;
   tomador: string;
