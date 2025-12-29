@@ -1,7 +1,10 @@
 import { useState } from "react";
+import { useNavigate } from "react-router-dom";
 import api from "../services/api";
 
 const Login = () => {
+  const navigate = useNavigate();
+
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
@@ -16,12 +19,24 @@ const Login = () => {
         password,
       });
 
+      // Guardamos solo si el backend responde OK
       localStorage.setItem("token", response.data.token);
-      localStorage.setItem("user", JSON.stringify(response.data.user));
+      localStorage.setItem(
+        "user",
+        JSON.stringify(response.data.user)
+      );
 
-      window.location.href = "/"; // luego lo cambiaremos por router
+      // 🚫 NO window.location.href
+      navigate("/libro-ventas", { replace: true });
     } catch (err: any) {
-      setError(err.response?.data?.message || "Error al iniciar sesión");
+      // Si falla, aseguramos limpieza
+      localStorage.removeItem("token");
+      localStorage.removeItem("user");
+
+      setError(
+        err.response?.data?.message ||
+          "Error al iniciar sesión"
+      );
     }
   };
 
@@ -69,7 +84,7 @@ const Login = () => {
 
         <button
           type="submit"
-          className="w-full bg-slate-800 text-white py-3 rounded-md text-lg font-semibold hover:bg-slate-900 transition"
+          className="w-full bg-slate-800 text-white py-3 rounded-md text-lg font-semibold hover:bg-slate-900 transition cursor-pointer"
         >
           Entrar
         </button>
