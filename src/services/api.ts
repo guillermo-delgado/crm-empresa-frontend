@@ -1,7 +1,7 @@
 import axios from "axios";
 
 const api = axios.create({
-  baseURL: "http://localhost:3001/api",
+  baseURL: import.meta.env.VITE_API_URL,
 });
 
 /* REQUEST: enviar token */
@@ -20,10 +20,9 @@ api.interceptors.response.use(
   (response) => response,
   (error) => {
     if (error.response?.status === 401) {
-      // Token inválido o caducado
       localStorage.removeItem("token");
+      localStorage.removeItem("user");
 
-      // Redirigir a login
       window.location.href = "/login";
     }
 
