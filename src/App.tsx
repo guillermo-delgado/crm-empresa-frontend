@@ -3,6 +3,7 @@ import LibroVentas from "./pages/LibroVentas";
 import NuevaVenta from "./pages/ventas/NuevaVenta";
 import Login from "./pages/Login";
 import ProtectedRoute from "./components/ProtectedRoute";
+import CrearUsuario from "./pages/admin/CrearUsuario";
 
 export default function App() {
   return (
@@ -26,6 +27,16 @@ export default function App() {
           element={
             <ProtectedRoute>
               <NuevaVenta />
+            </ProtectedRoute>
+          }
+        />
+
+        {/* NUEVA SECCIÓN ADMIN */}
+        <Route
+          path="/crm/usuarios"
+          element={
+            <ProtectedRoute adminOnly>
+              <CrearUsuario />
             </ProtectedRoute>
           }
         />
