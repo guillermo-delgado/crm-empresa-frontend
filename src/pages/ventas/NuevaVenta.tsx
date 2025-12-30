@@ -103,7 +103,7 @@ const NuevaVenta = () => {
                 <option value="">Selecciona aseguradora</option>
                 <option value="Mapfre">Mapfre</option>
                 <option value="Verti">Verti</option>
-                <option value="AXA">AXA</option>
+                
               </select>
             </Field>
 
@@ -118,6 +118,16 @@ const NuevaVenta = () => {
                 <option value="Auto">Auto</option>
                 <option value="Hogar">Hogar</option>
                 <option value="Vida">Vida</option>
+                <option value="Accidentes">Accidentes</option>
+            <option value="Salud">Salud</option>
+            <option value="DecesosPP">Decesos Prima Periodica</option>
+            <option value="DecesosPU">Decesos Prima única</option>
+            <option value="RC">Empresa sin multirriesgo</option>
+            <option value="Empresas">Empresas (074 o 078)</option>
+            <option value="Comunidades">Comunidades</option>
+            <option value="Patinetes">Patinetes</option>
+            <option value="Viajesida">Viajes</option>
+            <option value="Resto">Resto</option>
               </select>
             </Field>
 

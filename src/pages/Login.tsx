@@ -5,7 +5,7 @@ import api from "../services/api";
 const Login = () => {
   const navigate = useNavigate();
 
-  const [email, setEmail] = useState("");
+  const [login, setLogin] = useState(""); // email o numma
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
 
@@ -15,27 +15,22 @@ const Login = () => {
 
     try {
       const response = await api.post("/auth/login", {
-        email,
+        login: login.toLowerCase().trim(), // 🔑 NORMALIZADO
         password,
       });
 
-      // Guardamos solo si el backend responde OK
+      // Guardamos sesión
       localStorage.setItem("token", response.data.token);
-      localStorage.setItem(
-        "user",
-        JSON.stringify(response.data.user)
-      );
+      localStorage.setItem("user", JSON.stringify(response.data.user));
 
-      // 🚫 NO window.location.href
-      navigate("/libro-ventas", { replace: true });
+      // Redirigimos correctamente
+      navigate("/crm/libro-ventas", { replace: true });
     } catch (err: any) {
-      // Si falla, aseguramos limpieza
       localStorage.removeItem("token");
       localStorage.removeItem("user");
 
       setError(
-        err.response?.data?.message ||
-          "Error al iniciar sesión"
+        err.response?.data?.message || "Error al iniciar sesión"
       );
     }
   };
@@ -58,13 +53,13 @@ const Login = () => {
 
         <div className="mb-4">
           <label className="block text-lg font-semibold mb-1">
-            Email
+            Usuario (email o NUMMA)
           </label>
           <input
-            type="email"
+            type="text"
             className="w-full border border-slate-400 rounded-md px-4 py-3 text-lg"
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
+            value={login}
+            onChange={(e) => setLogin(e.target.value)}
             required
           />
         </div>

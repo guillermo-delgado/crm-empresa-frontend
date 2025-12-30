@@ -4,7 +4,9 @@ const api = axios.create({
   baseURL: import.meta.env.VITE_API_URL,
 });
 
-/* REQUEST: enviar token */
+/* =========================
+   REQUEST → añadir token
+========================= */
 api.interceptors.request.use((config) => {
   const token = localStorage.getItem("token");
 
@@ -15,14 +17,20 @@ api.interceptors.request.use((config) => {
   return config;
 });
 
-/* RESPONSE: manejar token caducado */
+/* =========================
+   RESPONSE → token caducado
+========================= */
 api.interceptors.response.use(
   (response) => response,
   (error) => {
-    if (error.response?.status === 401) {
+    const status = error.response?.status;
+
+    if (status === 401 || status === 403) {
+      // 🔥 TOKEN INVÁLIDO O CADUCADO
       localStorage.removeItem("token");
       localStorage.removeItem("user");
 
+      // 🚫 no navigate, no React Router
       window.location.href = "/login";
     }
 

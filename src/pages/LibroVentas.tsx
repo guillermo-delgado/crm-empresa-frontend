@@ -45,7 +45,7 @@ export default function LibroVentas() {
     setLoading(true);
     try {
       const res = await api.get(`/ventas/libro?month=${mes}&year=${anio}`);
-      setVentas(res.data.ventas);
+      setVentas(Array.isArray(res.data.ventas) ? res.data.ventas : []);
     } catch (e) {
       console.error("Error cargando libro de ventas", e);
     } finally {
