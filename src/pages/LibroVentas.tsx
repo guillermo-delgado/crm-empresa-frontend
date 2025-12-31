@@ -27,6 +27,24 @@ type VentaAPI = {
 export default function LibroVentas() {
   const navigate = useNavigate();
 
+  /* =========================
+     USUARIO ACTUAL (AÑADIDO)
+  ========================= */
+  const currentUser = JSON.parse(
+    localStorage.getItem("user") || "null"
+  );
+
+  const isAdmin = currentUser?.role === "admin";
+
+const today = new Date();
+
+// Fecha mínima (mes actual)
+const minPeriodo = new Date(today.getFullYear(), today.getMonth(), 1);
+
+// Fecha máxima (mes actual + 2)
+const maxPeriodo = new Date(today.getFullYear(), today.getMonth() + 2, 1);
+
+
   const now = new Date();
   const [mes, setMes] = useState(now.getMonth() + 1);
   const [anio, setAnio] = useState(now.getFullYear());
@@ -40,6 +58,11 @@ export default function LibroVentas() {
   const [aseguradora, setAseguradora] = useState("ALL");
   const [usuario, setUsuario] = useState("ALL");
   const [ramo, setRamo] = useState("ALL");
+
+  /* =========================
+     AVISO SOLICITUDES (AÑADIDO)
+  ========================= */
+  const [haySolicitudesPendientes, setHaySolicitudesPendientes] = useState(false);
 
   const fetchLibroVentas = async () => {
     setLoading(true);
@@ -57,7 +80,9 @@ export default function LibroVentas() {
     fetchLibroVentas();
   }, [mes, anio]);
 
-  /* FILTROS */
+  /* =========================
+     FILTROS
+  ========================= */
   const ventasFiltradas = useMemo(() => {
     return ventas.filter((v) => {
       if (aseguradora !== "ALL" && v.aseguradora !== aseguradora) return false;
@@ -67,7 +92,9 @@ export default function LibroVentas() {
     });
   }, [ventas, aseguradora, usuario, ramo]);
 
-  /* KPIs */
+  /* =========================
+     KPIs
+  ========================= */
   const produccionTotal = ventasFiltradas.reduce(
     (acc, v) => acc + v.primaNeta,
     0
@@ -84,177 +111,178 @@ export default function LibroVentas() {
   const usuarios = Array.from(new Set(ventas.map(v => v.createdBy?.nombre).filter(Boolean)));
   const ramos = Array.from(new Set(ventas.map(v => v.ramo)));
 
-  /* EXPORT EXCEL (TODO) */
+  /* =========================
+     EXPORT EXCEL
+  ========================= */
   const exportExcel = () => {
-  /* ========= HOJA RESUMEN ========= */
 
-  const resumenData: any[][] = [];
+    /* ========= HOJA RESUMEN ========= */
+    const resumenData: any[][] = [];
 
-  resumenData.push(["CRM · Libro de ventas"]);
-  resumenData.push(["Control mensual de producción"]);
-  resumenData.push([]);
-  resumenData.push(["Periodo", `${mesNombre(mes)} ${anio}`]);
-  resumenData.push([
-    "Producción total",
-    `${produccionTotal.toFixed(2)} €`,
-  ]);
-  resumenData.push([]);
-  resumenData.push(["Producción por ramo"]);
-  resumenData.push(["Ramo", "Producción (€)"]);
+    resumenData.push(["CRM · Libro de ventas"]);
+    resumenData.push(["Control mensual de producción"]);
+    resumenData.push([]);
+    resumenData.push(["Periodo", `${mesNombre(mes)} ${anio}`]);
+    resumenData.push([
+      "Producción total",
+      `${produccionTotal.toFixed(2)} €`,
+    ]);
+    resumenData.push([]);
+    resumenData.push(["Producción por ramo"]);
+    resumenData.push(["Ramo", "Producción (€)"]);
 
-  Object.entries(produccionPorRamo).forEach(([ramo, total]) => {
-    resumenData.push([ramo, total.toFixed(2)]);
-  });
+    Object.entries(produccionPorRamo).forEach(([ramo, total]) => {
+      resumenData.push([ramo, total.toFixed(2)]);
+    });
 
-  const wsResumen = XLSX.utils.aoa_to_sheet(resumenData);
+    const wsResumen = XLSX.utils.aoa_to_sheet(resumenData);
 
-  /* Ajustes visuales */
-  wsResumen["!cols"] = [
-    { wch: 30 },
-    { wch: 25 },
-  ];
+    wsResumen["!cols"] = [
+      { wch: 30 },
+      { wch: 25 },
+    ];
 
-  /* ========= HOJA VENTAS ========= */
+    /* ========= HOJA VENTAS ========= */
+    const ventasData = ventasFiltradas.map(v => ({
+      Fecha: new Date(v.fechaEfecto).toLocaleDateString(),
+      Póliza: v.numeroPoliza,
+      Tomador: v.tomador,
+      Aseguradora: v.aseguradora,
+      Ramo: v.ramo,
+      "Prima (€)": v.primaNeta.toFixed(2),
+      Usuario: v.createdBy?.nombre || "",
+    }));
 
-  const ventasData = ventasFiltradas.map(v => ({
-    Fecha: new Date(v.fechaEfecto).toLocaleDateString(),
-    Póliza: v.numeroPoliza,
-    Tomador: v.tomador,
-    Aseguradora: v.aseguradora,
-    Ramo: v.ramo,
-    "Prima (€)": v.primaNeta.toFixed(2),
-    Usuario: v.createdBy?.nombre || "",
-  }));
+    const wsVentas = XLSX.utils.json_to_sheet(ventasData);
 
-  const wsVentas = XLSX.utils.json_to_sheet(ventasData);
+    wsVentas["!cols"] = [
+      { wch: 12 },
+      { wch: 18 },
+      { wch: 25 },
+      { wch: 15 },
+      { wch: 12 },
+      { wch: 12 },
+      { wch: 22 },
+    ];
 
-  wsVentas["!cols"] = [
-    { wch: 12 },
-    { wch: 18 },
-    { wch: 25 },
-    { wch: 15 },
-    { wch: 12 },
-    { wch: 12 },
-    { wch: 22 },
-  ];
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, wsResumen, "Resumen");
+    XLSX.utils.book_append_sheet(wb, wsVentas, "Ventas");
 
-  /* ========= WORKBOOK ========= */
+    XLSX.writeFile(
+      wb,
+      `libro-ventas-${mesNombre(mes)}-${anio}.xlsx`
+    );
+  };
 
-  const wb = XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(wb, wsResumen, "Resumen");
-  XLSX.utils.book_append_sheet(wb, wsVentas, "Ventas");
-
-  XLSX.writeFile(
-    wb,
-    `libro-ventas-${mesNombre(mes)}-${anio}.xlsx`
-  );
-};
-
-
-  /* EXPORT PDF (TODO) */
+  /* =========================
+     EXPORT PDF
+  ========================= */
   const exportPDF = () => {
-  const doc = new jsPDF();
+    const doc = new jsPDF();
+    let y = 15;
 
-  let y = 15;
+    doc.setFontSize(16);
+    doc.text("CRM · Libro de ventas", 14, y);
 
-  /* ===== TÍTULO ===== */
-  doc.setFontSize(16);
-  doc.text("CRM · Libro de ventas", 14, y);
-
-  y += 6;
-  doc.setFontSize(10);
-  doc.setTextColor(100);
-  doc.text("Control mensual de producción", 14, y);
-
-  y += 10;
-
-  /* ===== KPIs ===== */
-  doc.setTextColor(0);
-  doc.setFontSize(11);
-
-  doc.roundedRect(14, y, 60, 18, 3, 3);
-  doc.text("Producción total", 18, y + 6);
-  doc.setFontSize(13);
-  doc.text(`${produccionTotal.toFixed(2)} €`, 18, y + 13);
-
-  doc.setFontSize(11);
-  doc.roundedRect(80, y, 60, 18, 3, 3);
-  doc.text("Periodo", 84, y + 6);
-  doc.setFontSize(13);
-  doc.text(`${mesNombre(mes)} ${anio}`, 84, y + 13);
-
-  y += 26;
-
-  /* ===== PRODUCCIÓN POR RAMO ===== */
-  doc.setFontSize(11);
-  doc.text("Producción por ramo", 14, y);
-  y += 6;
-
-  let x = 14;
-  const boxWidth = 45;
-  const boxHeight = 18;
-
-  Object.entries(produccionPorRamo).forEach(([ramo, total]) => {
-    if (x + boxWidth > 190) {
-      x = 14;
-      y += boxHeight + 6;
-    }
-
-    doc.roundedRect(x, y, boxWidth, boxHeight, 3, 3);
+    y += 6;
     doc.setFontSize(10);
-    doc.text(ramo, x + 4, y + 7);
+    doc.setTextColor(100);
+    doc.text("Control mensual de producción", 14, y);
+
+    y += 10;
+
+    doc.setTextColor(0);
     doc.setFontSize(11);
-    doc.text(`${total.toFixed(2)} €`, x + 4, y + 14);
 
-    x += boxWidth + 6;
-  });
+    doc.roundedRect(14, y, 60, 18, 3, 3);
+    doc.text("Producción total", 18, y + 6);
+    doc.setFontSize(13);
+    doc.text(`${produccionTotal.toFixed(2)} €`, 18, y + 13);
 
-  y += boxHeight + 12;
+    doc.setFontSize(11);
+    doc.roundedRect(80, y, 60, 18, 3, 3);
+    doc.text("Periodo", 84, y + 6);
+    doc.setFontSize(13);
+    doc.text(`${mesNombre(mes)} ${anio}`, 84, y + 13);
 
-  /* ===== TABLA ===== */
-  autoTable(doc, {
-    startY: y,
-    head: [[
-      "Fecha",
-      "Póliza",
-      "Tomador",
-      "Aseguradora",
-      "Ramo",
-      "Prima",
-      "Usuario",
-    ]],
-    body: ventasFiltradas.map(v => [
-      new Date(v.fechaEfecto).toLocaleDateString(),
-      v.numeroPoliza,
-      v.tomador,
-      v.aseguradora,
-      v.ramo,
-      `${v.primaNeta.toFixed(2)} €`,
-      v.createdBy?.nombre || "",
-    ]),
-    styles: {
-      fontSize: 9,
-      cellPadding: 3,
-    },
-    headStyles: {
-      fillColor: [240, 240, 240],
-      textColor: 20,
-      fontStyle: "bold",
-    },
-  });
+    y += 26;
 
-  doc.save(`libro-ventas-${mesNombre(mes)}-${anio}.pdf`);
-};
+    doc.setFontSize(11);
+    doc.text("Producción por ramo", 14, y);
+    y += 6;
+
+    let x = 14;
+    const boxWidth = 45;
+    const boxHeight = 18;
+
+    Object.entries(produccionPorRamo).forEach(([ramo, total]) => {
+      if (x + boxWidth > 190) {
+        x = 14;
+        y += boxHeight + 6;
+      }
+
+      doc.roundedRect(x, y, boxWidth, boxHeight, 3, 3);
+      doc.setFontSize(10);
+      doc.text(ramo, x + 4, y + 7);
+      doc.setFontSize(11);
+      doc.text(`${total.toFixed(2)} €`, x + 4, y + 14);
+
+      x += boxWidth + 6;
+    });
+
+    y += boxHeight + 12;
+
+    autoTable(doc, {
+      startY: y,
+      head: [[
+        "Fecha",
+        "Póliza",
+        "Tomador",
+        "Aseguradora",
+        "Ramo",
+        "Prima",
+        "Usuario",
+      ]],
+      body: ventasFiltradas.map(v => [
+        new Date(v.fechaEfecto).toLocaleDateString(),
+        v.numeroPoliza,
+        v.tomador,
+        v.aseguradora,
+        v.ramo,
+        `${v.primaNeta.toFixed(2)} €`,
+        v.createdBy?.nombre || "",
+      ]),
+      styles: {
+        fontSize: 9,
+        cellPadding: 3,
+      },
+      headStyles: {
+        fillColor: [240, 240, 240],
+        textColor: 20,
+        fontStyle: "bold",
+      },
+    });
+
+    doc.save(`libro-ventas-${mesNombre(mes)}-${anio}.pdf`);
+  };
 
 
+  
   return (
     <div className="p-6 space-y-6 bg-slate-50 min-h-screen">
 
-      {/* CABECERA */}
       <div>
         <h1 className="text-2xl font-semibold">CRM · Libro de ventas</h1>
         <p className="text-sm text-slate-500">Control mensual de producción</p>
       </div>
+
+      {/* AVISO ADMIN (AÑADIDO) */}
+      {currentUser?.role === "admin" && haySolicitudesPendientes && (
+        <div className="bg-yellow-100 border border-yellow-300 text-yellow-800 px-4 py-3 rounded">
+          ⚠️ Tienes solicitudes de empleados pendientes de revisión
+        </div>
+      )}
 
       {/* KPIs */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
@@ -278,13 +306,92 @@ export default function LibroVentas() {
       </div>
 
       {/* FILTROS */}
-      <div className="bg-white border rounded-lg p-4 flex gap-6 flex-wrap items-end">
-        <FiltroMes mes={mes} setMes={setMes} />
-        <FiltroAnio anio={anio} setAnio={setAnio} />
-        <Select label="Aseguradora" value={aseguradora} setValue={setAseguradora} options={aseguradoras} />
-        <Select label="Ramo" value={ramo} setValue={setRamo} options={ramos} />
-        <Select label="Usuario" value={usuario} setValue={setUsuario} options={usuarios} />
-      </div>
+<div className="bg-white border rounded-lg p-4 flex gap-6 flex-wrap items-end">
+
+  {/* 👑 ADMIN: filtros completos */}
+  {isAdmin && (
+    <>
+      <FiltroMes mes={mes} setMes={setMes} />
+      <FiltroAnio anio={anio} setAnio={setAnio} />
+      <Select
+        label="Aseguradora"
+        value={aseguradora}
+        setValue={setAseguradora}
+        options={aseguradoras}
+      />
+      <Select
+        label="Ramo"
+        value={ramo}
+        setValue={setRamo}
+        options={ramos}
+      />
+      <Select
+        label="Usuario"
+        value={usuario}
+        setValue={setUsuario}
+        options={usuarios}
+      />
+    </>
+  )}
+
+ 
+{/* 👤 EMPLEADOS: selector de periodo simple y centrado */}
+{!isAdmin && (
+  <div className="w-full flex justify-center">
+    <div className="flex items-center gap-4">
+
+      {/* RETROCEDER */}
+      <button
+        onClick={() => {
+          const anterior = new Date(anio, mes - 2, 1);
+          if (anterior >= minPeriodo) {
+            setMes(anterior.getMonth() + 1);
+            setAnio(anterior.getFullYear());
+          }
+        }}
+        disabled={new Date(anio, mes - 1, 1) <= minPeriodo}
+        className={`text-lg px-2 transition
+          ${
+            new Date(anio, mes - 1, 1) <= minPeriodo
+              ? "opacity-30 cursor-not-allowed"
+              : "hover:text-slate-700"
+          }`}
+      >
+        ◀
+      </button>
+
+      {/* PERIODO */}
+      <span className="text-sm font-semibold text-slate-700 min-w-[120px] text-center">
+        {mesNombre(mes)} {anio}
+      </span>
+
+      {/* AVANZAR */}
+      <button
+        onClick={() => {
+          const siguiente = new Date(anio, mes, 1);
+          if (siguiente <= maxPeriodo) {
+            setMes(siguiente.getMonth() + 1);
+            setAnio(siguiente.getFullYear());
+          }
+        }}
+        disabled={new Date(anio, mes - 1, 1) >= maxPeriodo}
+        className={`text-lg px-2 transition
+          ${
+            new Date(anio, mes - 1, 1) >= maxPeriodo
+              ? "opacity-30 cursor-not-allowed"
+              : "hover:text-slate-700"
+          }`}
+      >
+        ▶
+      </button>
+
+    </div>
+  </div>
+)}
+
+
+</div>
+
 
       {/* TABLA */}
       {!loading && (
@@ -310,29 +417,77 @@ export default function LibroVentas() {
         />
       )}
 
+      
       {/* ACCIONES */}
-      <div className="flex flex-wrap gap-3">
-        <button
-          onClick={() => navigate("/crm/nueva-venta")}
-          className="bg-slate-800 text-white px-4 py-2 rounded text-sm cursor-pointer"
-        >
-          + Nueva venta
-        </button>
+<div className="flex flex-wrap gap-3">
+  <button
+    onClick={() => navigate("/crm/nueva-venta")}
+    className="bg-slate-800 text-white px-4 py-2 rounded text-sm cursor-pointer"
+  >
+    + Nueva venta
+  </button>
 
-        <button
-          onClick={exportExcel}
-          className="border px-4 py-2 rounded text-sm cursor-pointer"
-        >
-          Exportar Excel
-        </button>
+  {currentUser?.role === "admin" && (
+    <>
+      <button
+        onClick={exportExcel}
+        className="border px-4 py-2 rounded text-sm cursor-pointer"
+      >
+        Exportar Excel
+      </button>
 
-        <button
-          onClick={exportPDF}
-          className="border px-4 py-2 rounded text-sm cursor-pointer"
-        >
-          Exportar PDF
-        </button>
-      </div>
+      <button
+        onClick={exportPDF}
+        className="border px-4 py-2 rounded text-sm cursor-pointer"
+      >
+        Exportar PDF
+      </button>
+
+      {/* 👇 BOTÓN PROVISIONAL */}
+      <button
+  onClick={async () => {
+    try {
+      const res = await api.get("/solicitudes");
+
+      if (!res.data.length) {
+        alert("No hay solicitudes pendientes");
+        return;
+      }
+
+      for (const s of res.data) {
+        const texto = `
+Solicitud: ${s.tipo}
+Póliza: ${s.venta?.numeroPoliza || "-"}
+Empleado: ${s.solicitadoPor?.nombre || "-"}
+        `;
+
+        const aprobar = window.confirm(
+          `${texto}\n\nAceptar = APROBAR\nCancelar = RECHAZAR`
+        );
+
+        if (aprobar) {
+          await api.post(`/solicitudes/${s._id}/aprobar`);
+          alert("Solicitud aprobada");
+        } else {
+          await api.post(`/solicitudes/${s._id}/rechazar`);
+          alert("Solicitud rechazada");
+        }
+      }
+
+      alert("No hay más solicitudes pendientes");
+    } catch (e) {
+      alert("Error gestionando solicitudes");
+    }
+  }}
+  className="border px-4 py-2 rounded text-sm cursor-pointer"
+>
+  Ver solicitudes pendientes
+</button>
+
+    </>
+  )}
+</div>
+
 
       {/* MODALES */}
       {ventaEditando && (
@@ -352,9 +507,17 @@ export default function LibroVentas() {
           description={`¿Eliminar la póliza ${ventaAEliminar.numeroPoliza}?`}
           onCancel={() => setVentaAEliminar(null)}
           onConfirm={async () => {
-            await api.delete(`/ventas/${ventaAEliminar._id}`);
-            fetchLibroVentas();
-            setVentaAEliminar(null);
+            try {
+              await api.delete(`/ventas/${ventaAEliminar._id}`);
+              fetchLibroVentas();
+            } catch (error: any) {
+              if (error.response?.status === 403) {
+                alert(error.response.data.message);
+                setHaySolicitudesPendientes(true);
+              }
+            } finally {
+              setVentaAEliminar(null);
+            }
           }}
         />
       )}
@@ -362,7 +525,9 @@ export default function LibroVentas() {
   );
 }
 
-/* AUX */
+/* =========================
+   AUX
+========================= */
 function Select({ label, value, setValue, options }: any) {
   return (
     <div>

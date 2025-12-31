@@ -18,20 +18,25 @@ api.interceptors.request.use((config) => {
 });
 
 /* =========================
-   RESPONSE → token caducado
+   RESPONSE → control errores auth
 ========================= */
 api.interceptors.response.use(
   (response) => response,
   (error) => {
     const status = error.response?.status;
 
-    if (status === 401 || status === 403) {
-      // 🔥 TOKEN INVÁLIDO O CADUCADO
+    // 🔴 SOLO token inválido o caducado
+    if (status === 401) {
       localStorage.removeItem("token");
       localStorage.removeItem("user");
 
-      // 🚫 no navigate, no React Router
       window.location.href = "/login";
+    }
+
+    // 🟠 Sin permisos → NO logout
+    if (status === 403) {
+      // Dejamos pasar el error para que el componente lo gestione
+      return Promise.reject(error);
     }
 
     return Promise.reject(error);

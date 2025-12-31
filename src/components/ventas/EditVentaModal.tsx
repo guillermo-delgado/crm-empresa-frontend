@@ -28,13 +28,23 @@ export default function EditVentaModal({ venta, onClose, onSaved }: Props) {
           submitLabel="Guardar cambios"
           onCancel={onClose}
           onSubmit={async (data) => {
-            await api.put(`/ventas/${venta._id}`, {
-              ...data,
-              primaNeta: Number(data.primaNeta),
-            });
+            try {
+              await api.put(`/ventas/${venta._id}`, {
+                ...data,
+                primaNeta: Number(data.primaNeta),
+              });
 
-            onSaved();
-            onClose();
+              onSaved();
+              onClose();
+            } catch (error: any) {
+              if (error.response?.status === 403) {
+                alert(
+                  "No tienes permisos para editar esta venta. La acción requiere aprobación de un administrador."
+                );
+              } else {
+                alert("Error al guardar los cambios");
+              }
+            }
           }}
         />
       </div>
