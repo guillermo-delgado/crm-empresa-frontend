@@ -121,7 +121,10 @@ useEffect(() => {
     }
   };
 
-  socket.on("VENTA_CREADA", onVenta);
+  socket.on("VENTA_CREADA", (data) => {
+  console.log("🟣 EVENTO VENTA_CREADA RECIBIDO:", data);
+});
+
   socket.on("VENTA_ACTUALIZADA", onVenta);
   socket.on("VENTA_ELIMINADA", onVenta);
   socket.on("SOLICITUD_CREADA", onSolicitudCreada);

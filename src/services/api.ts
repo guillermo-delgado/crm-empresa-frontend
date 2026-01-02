@@ -1,7 +1,7 @@
 import axios from "axios";
 
 const api = axios.create({
-  baseURL: import.meta.env.VITE_API_URL,
+  baseURL: `${import.meta.env.VITE_API_URL}/api`,
 });
 
 /* =========================
@@ -35,7 +35,6 @@ api.interceptors.response.use(
 
     // 🟠 Sin permisos → NO logout
     if (status === 403) {
-      // Dejamos pasar el error para que el componente lo gestione
       return Promise.reject(error);
     }
 
