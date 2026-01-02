@@ -564,11 +564,11 @@ function Select({ label, value, setValue, options }: any) {
 
 function FiltroMes({
   mes,
-  anio,
+  //anio,
   setMes,
-  setAnio,
-  minPeriodo,
-  maxPeriodo,
+//  setAnio,
+ // minPeriodo,
+ // maxPeriodo,
 }: any) {
 
   return (
