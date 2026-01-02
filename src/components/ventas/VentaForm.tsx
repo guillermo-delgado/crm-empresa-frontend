@@ -1,4 +1,5 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import api from "../../services/api";
 
 type Props = {
   initialData?: any;
@@ -7,17 +8,28 @@ type Props = {
   submitLabel?: string;
 };
 
-// 🔑 conversión REAL para input date
+type Usuario = {
+  _id: string;
+  nombre: string;
+  email: string;
+  numma?: string;
+};
+
 function toInputDate(value?: string) {
   if (!value) return "";
 
-  // acepta dd/mm/yyyy
+  // yyyy-mm-dd → OK directo
+  if (/^\d{4}-\d{2}-\d{2}$/.test(value)) {
+    return value;
+  }
+
+  // dd/mm/yyyy
   if (value.includes("/")) {
     const [dd, mm, yyyy] = value.split("/");
     return `${yyyy}-${mm.padStart(2, "0")}-${dd.padStart(2, "0")}`;
   }
 
-  // acepta ISO
+  // ISO completo
   if (value.includes("T")) {
     return value.substring(0, 10);
   }
@@ -25,39 +37,85 @@ function toInputDate(value?: string) {
   return "";
 }
 
+
+const ramosDisponibles = [
+  "Auto",
+  "Hogar",
+  "Vida",
+  "Accidentes",
+  "Salud",
+  "Decesos Prima Periodica",
+  "Decesos Prima única",
+  "Empresa sin multirriesgo",
+  "Empresas (074 o 078)",
+  "Comunidades",
+  "Patinetes",
+  "Viajes",
+  "Resto",
+];
+
 export default function VentaForm({
   initialData,
   onSubmit,
   onCancel,
   submitLabel = "Guardar cambios",
 }: Props) {
+  const dateRef = useRef<HTMLInputElement>(null);
+
+  const user = JSON.parse(localStorage.getItem("user") || "{}");
+  const isAdmin = user?.role === "admin";
+
+  const [usuarios, setUsuarios] = useState<Usuario[]>([]);
+
   const [form, setForm] = useState({
     fechaEfecto: "",
+    createdBy: "", // ← NUEVO (solo admin)
     aseguradora: "",
     ramo: "",
     numeroPoliza: "",
     tomador: "",
     primaNeta: "",
     formaPago: "",
+    actividad: "",
+    observaciones: "",
   });
 
-  // ✅ AQUÍ estaba el fallo real
+  /* =========================
+     CARGAR USUARIOS (ADMIN)
+  ========================= */
   useEffect(() => {
-    if (!initialData) return;
+    if (!isAdmin) return;
 
-    setForm({
-      fechaEfecto: toInputDate(initialData.fechaEfecto),
-      aseguradora: initialData.aseguradora || "",
-      ramo: initialData.ramo || "",
-      numeroPoliza: initialData.numeroPoliza || "",
-      tomador: initialData.tomador || "",
-      primaNeta: initialData.primaNeta?.toString() || "",
-      formaPago: initialData.formaPago || "",
-    });
-  }, [initialData]);
+    api
+      .get("/users/asignables")
+      .then((res) => setUsuarios(res.data))
+      .catch(() => {});
+  }, [isAdmin]);
+
+useEffect(() => {
+  if (!initialData) return;
+
+  setForm({
+    fechaEfecto: toInputDate(initialData.fechaEfecto),
+    createdBy: initialData.usuario || "",
+    aseguradora: initialData.aseguradora || "",
+    ramo: initialData.ramo || "",
+    numeroPoliza: initialData.numeroPoliza || "",
+    tomador: initialData.tomador || "",
+    primaNeta: initialData.primaNeta?.toString() || "",
+    formaPago: initialData.formaPago || "",
+    actividad: initialData.actividad || "",
+    observaciones: initialData.observaciones || "",
+  });
+}, [initialData]);
+
+
+
 
   const handleChange = (
-    e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>
+    e: React.ChangeEvent<
+      HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement
+    >
   ) => {
     setForm({ ...form, [e.target.name]: e.target.value });
   };
@@ -74,15 +132,42 @@ export default function VentaForm({
     >
       <div className="p-10 grid grid-cols-1 md:grid-cols-2 gap-x-10 gap-y-8">
 
+        {/* FECHA */}
         <Field label="Fecha de efecto">
           <input
+            ref={dateRef}
             type="date"
             name="fechaEfecto"
             value={form.fechaEfecto}
             onChange={handleChange}
+            onClick={() => dateRef.current?.showPicker()}
             className="input cursor-pointer"
           />
         </Field>
+
+        {/* USUARIO (SOLO ADMIN) */}
+        {isAdmin && (
+          <Field label="Usuario">
+            <input
+              list="usuarios-list"
+              name="createdBy"
+              value={form.createdBy}
+              onChange={handleChange}
+              className="input cursor-pointer"
+              placeholder="Numma, nombre o email"
+            />
+            <datalist id="usuarios-list">
+              {usuarios.map((u) => (
+                <option
+                  key={u._id}
+                  value={u.numma || u.nombre || u.email}
+                >
+                  {u.nombre} ({u.email})
+                </option>
+              ))}
+            </datalist>
+          </Field>
+        )}
 
         <Field label="Aseguradora">
           <select
@@ -94,32 +179,23 @@ export default function VentaForm({
             <option value="">Selecciona aseguradora</option>
             <option value="Mapfre">Mapfre</option>
             <option value="Verti">Verti</option>
-            
           </select>
         </Field>
 
         <Field label="Ramo">
-          <select
+          <input
+            list="ramos-list"
             name="ramo"
             value={form.ramo}
             onChange={handleChange}
             className="input cursor-pointer"
-          >
-            <option value="">Selecciona ramo</option>
-            <option value="Auto">Auto</option>
-            <option value="Hogar">Hogar</option>
-            <option value="Vida">Vida</option>
-            <option value="Accidentes">Accidentes</option>
-            <option value="Salud">Salud</option>
-            <option value="DecesosPP">Decesos Prima Periodica</option>
-            <option value="DecesosPU">Decesos Prima única</option>
-            <option value="RC">Empresa sin multirriesgo</option>
-            <option value="Empresas">Empresas (074 o 078)</option>
-            <option value="Comunidades">Comunidades</option>
-            <option value="Patinetes">Patinetes</option>
-            <option value="Viajesida">Viajes</option>
-            <option value="Resto">Resto</option>
-          </select>
+            required
+          />
+          <datalist id="ramos-list">
+            {ramosDisponibles.map((r) => (
+              <option key={r} value={r} />
+            ))}
+          </datalist>
         </Field>
 
         <Field label="Número de póliza">
@@ -162,6 +238,34 @@ export default function VentaForm({
             <option value="Mensual">Mensual</option>
           </select>
         </Field>
+
+        <Field label="Actividad">
+          <select
+            name="actividad"
+            value={form.actividad}
+            onChange={handleChange}
+            className="input cursor-pointer"
+            required
+          >
+            <option value="">Selecciona actividad</option>
+            <option value="SGC">SGC</option>
+            <option value="OFICINA">OFICINA</option>
+            <option value="TELEFONICO">TELEFONICO</option>
+            <option value="INTERNET">INTERNET</option>
+            <option value="RED PERSONAL">RED PERSONAL</option>
+          </select>
+        </Field>
+
+        <Field label="Observaciones">
+          <textarea
+            name="observaciones"
+            value={form.observaciones}
+            onChange={handleChange}
+            rows={3}
+            className="input resize-none"
+          />
+        </Field>
+
       </div>
 
       <div className="px-10 py-6 bg-slate-50 border-t border-slate-300 flex justify-end gap-4">

@@ -7,7 +7,11 @@ type Props = {
   onSaved: () => void;
 };
 
-export default function EditVentaModal({ venta, onClose, onSaved }: Props) {
+export default function EditVentaModal({
+  venta,
+  onClose,
+  onSaved,
+}: Props) {
   return (
     <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50">
       <div className="bg-white rounded-lg p-6 w-full max-w-2xl">
@@ -17,13 +21,26 @@ export default function EditVentaModal({ venta, onClose, onSaved }: Props) {
 
         <VentaForm
           initialData={{
+            /* === CAMPOS EXISTENTES === */
             fechaEfecto: venta.fechaEfecto?.split("T")[0],
             numeroPoliza: venta.numeroPoliza || venta.poliza,
             tomador: venta.tomador,
             aseguradora: venta.aseguradora,
             ramo: venta.ramo,
-            primaNeta: venta.primaNeta || venta.prima,
+            primaNeta: venta.primaNeta ?? venta.prima,
             formaPago: venta.formaPago,
+
+            /* === CAMPOS NUEVOS === */
+            actividad: venta.actividad || "",
+            observaciones: venta.observaciones || "",
+
+            /* === USUARIO (CLAVE PARA QUE SE PRECARGUE) === */
+            usuario:
+              venta.createdBy?.numma ??
+              venta.createdBy?.nombre ??
+              venta.createdBy?.email ??
+              venta.usuario ??
+              "",
           }}
           submitLabel="Guardar cambios"
           onCancel={onClose}
@@ -39,8 +56,9 @@ export default function EditVentaModal({ venta, onClose, onSaved }: Props) {
             } catch (error: any) {
               if (error.response?.status === 403) {
                 alert(
-                  "No tienes permisos para editar esta venta. La acción requiere aprobación de un administrador."
+                  "No tienes permisos para editar esta venta. Se ha enviado una solicitud al administrador para su aprobación."
                 );
+                onClose();
               } else {
                 alert("Error al guardar los cambios");
               }

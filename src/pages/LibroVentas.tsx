@@ -6,6 +6,9 @@ import ConfirmModal from "../components/ventas/ConfirmModal";
 import api from "../services/api";
 import { useNavigate } from "react-router-dom";
 
+/* 🔔 SOCKET */
+import { getSocket } from "../services/socket";
+
 import * as XLSX from "xlsx";
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
@@ -27,27 +30,28 @@ type VentaAPI = {
 export default function LibroVentas() {
   const navigate = useNavigate();
 
-  /* =========================
-     USUARIO ACTUAL (AÑADIDO)
+   /* =========================
+     USUARIO ACTUAL
   ========================= */
-  const currentUser = JSON.parse(
-    localStorage.getItem("user") || "null"
-  );
+  let currentUser: any = null;
+try {
+  currentUser = JSON.parse(localStorage.getItem("user") || "null");
+} catch {
+  currentUser = null;
+}
 
   const isAdmin = currentUser?.role === "admin";
-
-const today = new Date();
-
-// Fecha mínima (mes actual)
-const minPeriodo = new Date(today.getFullYear(), today.getMonth(), 1);
-
-// Fecha máxima (mes actual + 2)
-const maxPeriodo = new Date(today.getFullYear(), today.getMonth() + 2, 1);
-
 
   const now = new Date();
   const [mes, setMes] = useState(now.getMonth() + 1);
   const [anio, setAnio] = useState(now.getFullYear());
+  // 📅 Límites de periodo (empleados)
+const hoy = new Date();
+const minPeriodo = new Date(hoy.getFullYear(), hoy.getMonth(), 1);
+const maxPeriodo = new Date(hoy.getFullYear(), hoy.getMonth() + 2, 1);
+
+const [solicitudesPendientes, setSolicitudesPendientes] = useState(0);
+
 
   const [ventas, setVentas] = useState<VentaAPI[]>([]);
   const [loading, setLoading] = useState(false);
@@ -60,9 +64,10 @@ const maxPeriodo = new Date(today.getFullYear(), today.getMonth() + 2, 1);
   const [ramo, setRamo] = useState("ALL");
 
   /* =========================
-     AVISO SOLICITUDES (AÑADIDO)
+     SOLICITUDES PENDIENTES
   ========================= */
-  const [haySolicitudesPendientes, setHaySolicitudesPendientes] = useState(false);
+
+
 
   const fetchLibroVentas = async () => {
     setLoading(true);
@@ -76,9 +81,63 @@ const maxPeriodo = new Date(today.getFullYear(), today.getMonth() + 2, 1);
     }
   };
 
-  useEffect(() => {
+// 1️⃣ Cargar ventas al cambiar periodo
+useEffect(() => {
+  fetchLibroVentas();
+}, [mes, anio]);
+
+// 2️⃣ Cargar solicitudes pendientes al entrar (ADMIN)
+useEffect(() => {
+  if (!isAdmin) return;
+
+  const cargarSolicitudes = async () => {
+    try {
+      const res = await api.get("/solicitudes");
+      setSolicitudesPendientes(res.data.length);
+    } catch {}
+  };
+
+  cargarSolicitudes();
+}, [isAdmin]);
+
+// 3️⃣ Socket tiempo real
+useEffect(() => {
+  const socket = getSocket();
+  if (!socket) return;
+
+  const onVenta = () => {
     fetchLibroVentas();
-  }, [mes, anio]);
+  };
+
+  const onSolicitudCreada = () => {
+    if (isAdmin) {
+      setSolicitudesPendientes((prev) => prev + 1);
+    }
+  };
+
+  const onSolicitudResuelta = () => {
+    if (isAdmin) {
+      setSolicitudesPendientes((prev) => Math.max(prev - 1, 0));
+    }
+  };
+
+  socket.on("VENTA_CREADA", onVenta);
+  socket.on("VENTA_ACTUALIZADA", onVenta);
+  socket.on("VENTA_ELIMINADA", onVenta);
+  socket.on("SOLICITUD_CREADA", onSolicitudCreada);
+  socket.on("SOLICITUD_RESUELTA", onSolicitudResuelta);
+
+  return () => {
+    socket.off("VENTA_CREADA", onVenta);
+    socket.off("VENTA_ACTUALIZADA", onVenta);
+    socket.off("VENTA_ELIMINADA", onVenta);
+    socket.off("SOLICITUD_CREADA", onSolicitudCreada);
+    socket.off("SOLICITUD_RESUELTA", onSolicitudResuelta);
+  };
+}, [isAdmin, mes, anio]);
+
+
+
 
   /* =========================
      FILTROS
@@ -110,13 +169,10 @@ const maxPeriodo = new Date(today.getFullYear(), today.getMonth() + 2, 1);
   const aseguradoras = Array.from(new Set(ventas.map(v => v.aseguradora)));
   const usuarios = Array.from(new Set(ventas.map(v => v.createdBy?.nombre).filter(Boolean)));
   const ramos = Array.from(new Set(ventas.map(v => v.ramo)));
-
   /* =========================
      EXPORT EXCEL
   ========================= */
   const exportExcel = () => {
-
-    /* ========= HOJA RESUMEN ========= */
     const resumenData: any[][] = [];
 
     resumenData.push(["CRM · Libro de ventas"]);
@@ -136,13 +192,8 @@ const maxPeriodo = new Date(today.getFullYear(), today.getMonth() + 2, 1);
     });
 
     const wsResumen = XLSX.utils.aoa_to_sheet(resumenData);
+    wsResumen["!cols"] = [{ wch: 30 }, { wch: 25 }];
 
-    wsResumen["!cols"] = [
-      { wch: 30 },
-      { wch: 25 },
-    ];
-
-    /* ========= HOJA VENTAS ========= */
     const ventasData = ventasFiltradas.map(v => ({
       Fecha: new Date(v.fechaEfecto).toLocaleDateString(),
       Póliza: v.numeroPoliza,
@@ -154,25 +205,16 @@ const maxPeriodo = new Date(today.getFullYear(), today.getMonth() + 2, 1);
     }));
 
     const wsVentas = XLSX.utils.json_to_sheet(ventasData);
-
     wsVentas["!cols"] = [
-      { wch: 12 },
-      { wch: 18 },
-      { wch: 25 },
-      { wch: 15 },
-      { wch: 12 },
-      { wch: 12 },
-      { wch: 22 },
+      { wch: 12 }, { wch: 18 }, { wch: 25 },
+      { wch: 15 }, { wch: 12 }, { wch: 12 }, { wch: 22 },
     ];
 
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, wsResumen, "Resumen");
     XLSX.utils.book_append_sheet(wb, wsVentas, "Ventas");
 
-    XLSX.writeFile(
-      wb,
-      `libro-ventas-${mesNombre(mes)}-${anio}.xlsx`
-    );
+    XLSX.writeFile(wb, `libro-ventas-${mesNombre(mes)}-${anio}.xlsx`);
   };
 
   /* =========================
@@ -187,63 +229,16 @@ const maxPeriodo = new Date(today.getFullYear(), today.getMonth() + 2, 1);
 
     y += 6;
     doc.setFontSize(10);
-    doc.setTextColor(100);
     doc.text("Control mensual de producción", 14, y);
 
     y += 10;
 
-    doc.setTextColor(0);
     doc.setFontSize(11);
-
-    doc.roundedRect(14, y, 60, 18, 3, 3);
-    doc.text("Producción total", 18, y + 6);
-    doc.setFontSize(13);
-    doc.text(`${produccionTotal.toFixed(2)} €`, 18, y + 13);
-
-    doc.setFontSize(11);
-    doc.roundedRect(80, y, 60, 18, 3, 3);
-    doc.text("Periodo", 84, y + 6);
-    doc.setFontSize(13);
-    doc.text(`${mesNombre(mes)} ${anio}`, 84, y + 13);
-
-    y += 26;
-
-    doc.setFontSize(11);
-    doc.text("Producción por ramo", 14, y);
-    y += 6;
-
-    let x = 14;
-    const boxWidth = 45;
-    const boxHeight = 18;
-
-    Object.entries(produccionPorRamo).forEach(([ramo, total]) => {
-      if (x + boxWidth > 190) {
-        x = 14;
-        y += boxHeight + 6;
-      }
-
-      doc.roundedRect(x, y, boxWidth, boxHeight, 3, 3);
-      doc.setFontSize(10);
-      doc.text(ramo, x + 4, y + 7);
-      doc.setFontSize(11);
-      doc.text(`${total.toFixed(2)} €`, x + 4, y + 14);
-
-      x += boxWidth + 6;
-    });
-
-    y += boxHeight + 12;
+    // doc.text(`${produccionTotal.toFixed(2)} €`, 18, y + 13);
 
     autoTable(doc, {
-      startY: y,
-      head: [[
-        "Fecha",
-        "Póliza",
-        "Tomador",
-        "Aseguradora",
-        "Ramo",
-        "Prima",
-        "Usuario",
-      ]],
+      startY: y + 20,
+      head: [["Fecha", "Póliza", "Tomador", "Aseguradora", "Ramo", "Prima", "Usuario"]],
       body: ventasFiltradas.map(v => [
         new Date(v.fechaEfecto).toLocaleDateString(),
         v.numeroPoliza,
@@ -253,22 +248,11 @@ const maxPeriodo = new Date(today.getFullYear(), today.getMonth() + 2, 1);
         `${v.primaNeta.toFixed(2)} €`,
         v.createdBy?.nombre || "",
       ]),
-      styles: {
-        fontSize: 9,
-        cellPadding: 3,
-      },
-      headStyles: {
-        fillColor: [240, 240, 240],
-        textColor: 20,
-        fontStyle: "bold",
-      },
     });
 
     doc.save(`libro-ventas-${mesNombre(mes)}-${anio}.pdf`);
   };
 
-
-  
   return (
     <div className="p-6 space-y-6 bg-slate-50 min-h-screen">
 
@@ -277,8 +261,10 @@ const maxPeriodo = new Date(today.getFullYear(), today.getMonth() + 2, 1);
         <p className="text-sm text-slate-500">Control mensual de producción</p>
       </div>
 
-      {/* AVISO ADMIN (AÑADIDO) */}
-      {currentUser?.role === "admin" && haySolicitudesPendientes && (
+       
+
+      {/* AVISO ADMIN */}
+      {isAdmin && solicitudesPendientes > 0 && (
         <div className="bg-yellow-100 border border-yellow-300 text-yellow-800 px-4 py-3 rounded">
           ⚠️ Tienes solicitudes de empleados pendientes de revisión
         </div>
@@ -311,82 +297,106 @@ const maxPeriodo = new Date(today.getFullYear(), today.getMonth() + 2, 1);
   {/* 👑 ADMIN: filtros completos */}
   {isAdmin && (
     <>
-      <FiltroMes mes={mes} setMes={setMes} />
-      <FiltroAnio anio={anio} setAnio={setAnio} />
-      <Select
-        label="Aseguradora"
-        value={aseguradora}
-        setValue={setAseguradora}
-        options={aseguradoras}
-      />
-      <Select
-        label="Ramo"
-        value={ramo}
-        setValue={setRamo}
-        options={ramos}
-      />
-      <Select
-        label="Usuario"
-        value={usuario}
-        setValue={setUsuario}
-        options={usuarios}
-      />
-    </>
+  <FiltroMes
+    mes={mes}
+    anio={anio}
+    setMes={setMes}
+    setAnio={setAnio}
+    minPeriodo={minPeriodo}
+    maxPeriodo={maxPeriodo}
+  />
+
+  <FiltroAnio
+    anio={anio}
+    setAnio={setAnio}
+  />
+
+  <Select
+    label="Aseguradora"
+    value={aseguradora}
+    setValue={setAseguradora}
+    options={aseguradoras}
+  />
+
+  <Select
+    label="Ramo"
+    value={ramo}
+    setValue={setRamo}
+    options={ramos}
+  />
+
+  <Select
+    label="Usuario"
+    value={usuario}
+    setValue={setUsuario}
+    options={usuarios}
+  />
+</>
+
   )}
 
  
 {/* 👤 EMPLEADOS: selector de periodo simple y centrado */}
 {!isAdmin && (
   <div className="w-full flex justify-center">
-    <div className="flex items-center gap-4">
+  <div className="flex items-center gap-6">
 
-      {/* RETROCEDER */}
-      <button
-        onClick={() => {
-          const anterior = new Date(anio, mes - 2, 1);
-          if (anterior >= minPeriodo) {
-            setMes(anterior.getMonth() + 1);
-            setAnio(anterior.getFullYear());
-          }
-        }}
-        disabled={new Date(anio, mes - 1, 1) <= minPeriodo}
-        className={`text-lg px-2 transition
-          ${
-            new Date(anio, mes - 1, 1) <= minPeriodo
-              ? "opacity-30 cursor-not-allowed"
-              : "hover:text-slate-700"
-          }`}
-      >
-        ◀
-      </button>
+    {/* ◀ RETROCEDER */}
+    <button
+      onClick={() => {
+        const anterior = new Date(anio, mes - 2, 1);
 
-      {/* PERIODO */}
-      <span className="text-sm font-semibold text-slate-700 min-w-[120px] text-center">
-        {mesNombre(mes)} {anio}
-      </span>
+        if (anterior >= minPeriodo) {
+          setMes(anterior.getMonth() + 1);
+          setAnio(anterior.getFullYear());
+        }
+      }}
+      disabled={
+        new Date(anio, mes - 1, 1).getTime() === minPeriodo.getTime()
+      }
+      className={`text-xl font-medium transition
+        ${
+          new Date(anio, mes - 1, 1).getTime() === minPeriodo.getTime()
+            ? "opacity-30 cursor-not-allowed"
+            : "hover:text-slate-800"
+        }`}
+      aria-label="Mes anterior"
+    >
+      ◀
+    </button>
 
-      {/* AVANZAR */}
-      <button
-        onClick={() => {
-          const siguiente = new Date(anio, mes, 1);
-          if (siguiente <= maxPeriodo) {
-            setMes(siguiente.getMonth() + 1);
-            setAnio(siguiente.getFullYear());
-          }
-        }}
-        disabled={new Date(anio, mes - 1, 1) >= maxPeriodo}
-        className={`text-lg px-2 transition
-          ${
-            new Date(anio, mes - 1, 1) >= maxPeriodo
-              ? "opacity-30 cursor-not-allowed"
-              : "hover:text-slate-700"
-          }`}
-      >
-        ▶
-      </button>
+    {/* PERIODO */}
+    <span className="text-sm font-semibold text-slate-700 min-w-[140px] text-center select-none">
+      {mesNombre(mes)} {anio}
+    </span>
 
-    </div>
+    {/* ▶ AVANZAR */}
+    <button
+      onClick={() => {
+        const siguiente = new Date(anio, mes, 1);
+
+        if (siguiente <= maxPeriodo) {
+          setMes(siguiente.getMonth() + 1);
+          setAnio(siguiente.getFullYear());
+        }
+      }}
+      disabled={
+        new Date(anio, mes - 1, 1).getTime() === maxPeriodo.getTime()
+      }
+      className={`text-xl font-medium transition
+        ${
+          new Date(anio, mes - 1, 1).getTime() === maxPeriodo.getTime()
+            ? "opacity-30 cursor-not-allowed"
+            : "hover:text-slate-800"
+        }`}
+      aria-label="Mes siguiente"
+    >
+      ▶
+    </button>
+
   </div>
+</div>
+
 )}
 
 
@@ -444,45 +454,47 @@ const maxPeriodo = new Date(today.getFullYear(), today.getMonth() + 2, 1);
       </button>
 
       {/* 👇 BOTÓN PROVISIONAL */}
-      <button
-  onClick={async () => {
-    try {
-      const res = await api.get("/solicitudes");
+    {isAdmin && (
+  <button
+    onClick={async () => {
+      try {
+        const res = await api.get("/solicitudes");
 
-      if (!res.data.length) {
-        alert("No hay solicitudes pendientes");
-        return;
-      }
+        if (!res.data.length) {
+          alert("No hay solicitudes pendientes");
+          setSolicitudesPendientes(0);
+          return;
+        }
 
-      for (const s of res.data) {
-        const texto = `
-Solicitud: ${s.tipo}
+        setSolicitudesPendientes(res.data.length);
+
+        const listado = res.data
+          .map(
+            (s: any, i: number) => `
+${i + 1}. ${s.tipo}
 Póliza: ${s.venta?.numeroPoliza || "-"}
 Empleado: ${s.solicitadoPor?.nombre || "-"}
-        `;
+`
+          )
+          .join("\n----------------\n");
 
-        const aprobar = window.confirm(
-          `${texto}\n\nAceptar = APROBAR\nCancelar = RECHAZAR`
-        );
-
-        if (aprobar) {
-          await api.post(`/solicitudes/${s._id}/aprobar`);
-          alert("Solicitud aprobada");
-        } else {
-          await api.post(`/solicitudes/${s._id}/rechazar`);
-          alert("Solicitud rechazada");
-        }
+        alert(`Solicitudes pendientes:\n\n${listado}`);
+      } catch (e) {
+        alert("Error cargando solicitudes");
       }
+    }}
+    className="relative border px-4 py-2 rounded text-sm cursor-pointer"
+  >
+    Ver solicitudes pendientes
 
-      alert("No hay más solicitudes pendientes");
-    } catch (e) {
-      alert("Error gestionando solicitudes");
-    }
-  }}
-  className="border px-4 py-2 rounded text-sm cursor-pointer"
->
-  Ver solicitudes pendientes
-</button>
+    {solicitudesPendientes > 0 && (
+      <span className="absolute -top-2 -right-2 bg-red-600 text-white text-xs font-bold rounded-full px-2 py-0.5">
+        {solicitudesPendientes}
+      </span>
+    )}
+  </button>
+)}
+
 
     </>
   )}
@@ -513,7 +525,8 @@ Empleado: ${s.solicitadoPor?.nombre || "-"}
             } catch (error: any) {
               if (error.response?.status === 403) {
                 alert(error.response.data.message);
-                setHaySolicitudesPendientes(true);
+                setSolicitudesPendientes((prev) => prev + 1);
+
               }
             } finally {
               setVentaAEliminar(null);
@@ -546,7 +559,15 @@ function Select({ label, value, setValue, options }: any) {
   );
 }
 
-function FiltroMes({ mes, setMes }: any) {
+function FiltroMes({
+  mes,
+  anio,
+  setMes,
+  setAnio,
+  minPeriodo,
+  maxPeriodo,
+}: any) {
+
   return (
     <div>
       <label className="block text-xs font-semibold mb-1">Mes</label>

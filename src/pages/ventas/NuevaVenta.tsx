@@ -1,9 +1,38 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import api from "../../services/api";
 import { useNavigate } from "react-router-dom";
 
+const ramosDisponibles = [
+  "Auto",
+  "Hogar",
+  "Vida",
+  "Accidentes",
+  "Salud",
+  "Decesos Prima Periodica",
+  "Decesos Prima única",
+  "Empresa sin multirriesgo",
+  "Empresas (074 o 078)",
+  "Comunidades",
+  "Patinetes",
+  "Viajes",
+  "Resto",
+];
+
+type Usuario = {
+  _id: string;
+  nombre: string;
+  email: string;
+  numma?: string;
+};
+
 const NuevaVenta = () => {
   const navigate = useNavigate();
+  const dateRef = useRef<HTMLInputElement>(null);
+
+  const user = JSON.parse(localStorage.getItem("user") || "{}");
+  const isAdmin = user?.role === "admin";
+
+  const [usuarios, setUsuarios] = useState<Usuario[]>([]);
 
   const [form, setForm] = useState({
     fechaEfecto: "",
@@ -13,13 +42,31 @@ const NuevaVenta = () => {
     tomador: "",
     primaNeta: "",
     formaPago: "",
+    actividad: "",
+    observaciones: "",
+    createdBy: "", // ← NUEVO (solo admin)
   });
 
   const [success, setSuccess] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  /* =========================
+     CARGAR USUARIOS (solo admin)
+  ========================= */
+  useEffect(() => {
+    if (!isAdmin) return;
+
+   api
+  .get("/users/asignables")
+  .then((res) => setUsuarios(res.data))
+  .catch(() => {});
+
+  }, [isAdmin]);
+
   const handleChange = (
-    e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>
+    e: React.ChangeEvent<
+      HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement
+    >
   ) => {
     setForm({ ...form, [e.target.name]: e.target.value });
   };
@@ -32,6 +79,9 @@ const NuevaVenta = () => {
       await api.post("/ventas", {
         ...form,
         primaNeta: Number(form.primaNeta),
+        ...(isAdmin && form.createdBy
+          ? { createdBy: form.createdBy }
+          : {}),
       });
 
       setSuccess(true);
@@ -44,13 +94,15 @@ const NuevaVenta = () => {
         tomador: "",
         primaNeta: "",
         formaPago: "",
+        actividad: "",
+        observaciones: "",
+        createdBy: "",
       });
     } catch (err: any) {
-      if (err.response?.data?.message) {
-        setError(err.response.data.message);
-      } else {
-        setError("Error inesperado al guardar la venta");
-      }
+      setError(
+        err.response?.data?.message ||
+          "Error inesperado al guardar la venta"
+      );
     }
   };
 
@@ -83,15 +135,45 @@ const NuevaVenta = () => {
           className="bg-white border border-slate-300 rounded-xl shadow-md"
         >
           <div className="p-10 grid grid-cols-1 md:grid-cols-2 gap-x-10 gap-y-8">
+
+            {/* FECHA */}
             <Field label="Fecha de efecto">
               <input
+                ref={dateRef}
                 type="date"
                 name="fechaEfecto"
                 value={form.fechaEfecto}
                 onChange={handleChange}
+                onClick={() => dateRef.current?.showPicker()}
                 className="input cursor-pointer"
               />
             </Field>
+
+            {/* USUARIO (SOLO ADMIN) */}
+            {isAdmin && (
+              <Field label="Usuario">
+                <input
+                  list="usuarios-list"
+                  name="createdBy"
+                  value={form.createdBy}
+                  onChange={handleChange}
+                  className="input cursor-pointer"
+                  placeholder="Escribe para buscar usuario"
+                />
+
+                <datalist id="usuarios-list">
+                  {usuarios.map((u) => (
+                    <option
+  key={u._id}
+  value={u.numma || u.nombre || u.email}
+>
+  {u.nombre} ({u.email})
+</option>
+
+                  ))}
+                </datalist>
+              </Field>
+            )}
 
             <Field label="Aseguradora">
               <select
@@ -103,38 +185,30 @@ const NuevaVenta = () => {
                 <option value="">Selecciona aseguradora</option>
                 <option value="Mapfre">Mapfre</option>
                 <option value="Verti">Verti</option>
-                
               </select>
             </Field>
 
+            {/* RAMO */}
             <Field label="Ramo">
-              <select
+              <input
+                list="ramos-list"
                 name="ramo"
                 value={form.ramo}
                 onChange={handleChange}
                 className="input cursor-pointer"
-              >
-                <option value="">Selecciona ramo</option>
-                <option value="Auto">Auto</option>
-                <option value="Hogar">Hogar</option>
-                <option value="Vida">Vida</option>
-                <option value="Accidentes">Accidentes</option>
-            <option value="Salud">Salud</option>
-            <option value="DecesosPP">Decesos Prima Periodica</option>
-            <option value="DecesosPU">Decesos Prima única</option>
-            <option value="RC">Empresa sin multirriesgo</option>
-            <option value="Empresas">Empresas (074 o 078)</option>
-            <option value="Comunidades">Comunidades</option>
-            <option value="Patinetes">Patinetes</option>
-            <option value="Viajesida">Viajes</option>
-            <option value="Resto">Resto</option>
-              </select>
+                placeholder="Escribe o selecciona ramo"
+                required
+              />
+              <datalist id="ramos-list">
+                {ramosDisponibles.map((r) => (
+                  <option key={r} value={r} />
+                ))}
+              </datalist>
             </Field>
 
             <Field label="Número de póliza">
               <input
                 name="numeroPoliza"
-                placeholder="ABC123456"
                 value={form.numeroPoliza}
                 onChange={handleChange}
                 className="input cursor-pointer"
@@ -144,7 +218,6 @@ const NuevaVenta = () => {
             <Field label="Tomador">
               <input
                 name="tomador"
-                placeholder="Nombre del cliente"
                 value={form.tomador}
                 onChange={handleChange}
                 className="input cursor-pointer"
@@ -155,7 +228,6 @@ const NuevaVenta = () => {
               <input
                 type="number"
                 name="primaNeta"
-                placeholder="0.00"
                 value={form.primaNeta}
                 onChange={handleChange}
                 className="input cursor-pointer"
@@ -174,9 +246,36 @@ const NuevaVenta = () => {
                 <option value="Mensual">Mensual</option>
               </select>
             </Field>
+
+            <Field label="Actividad">
+              <select
+                name="actividad"
+                value={form.actividad}
+                onChange={handleChange}
+                className="input cursor-pointer"
+                required
+              >
+                <option value="">Selecciona actividad</option>
+                <option value="SGC">SGC</option>
+                <option value="OFICINA">OFICINA</option>
+                <option value="TELEFONICO">TELEFONICO</option>
+                <option value="INTERNET">INTERNET</option>
+                <option value="RED PERSONAL">RED PERSONAL</option>
+              </select>
+            </Field>
+
+            <Field label="Observaciones">
+              <textarea
+                name="observaciones"
+                value={form.observaciones}
+                onChange={handleChange}
+                rows={3}
+                className="input resize-none"
+              />
+            </Field>
+
           </div>
 
-          {/* ERROR */}
           {error && (
             <div className="px-10 pb-4">
               <div className="bg-red-50 border border-red-300 text-red-700 px-4 py-3 rounded-md font-semibold">
@@ -185,64 +284,21 @@ const NuevaVenta = () => {
             </div>
           )}
 
-          {/* FOOTER */}
           <div className="px-10 py-6 bg-slate-50 border-t border-slate-300 flex justify-end">
             <button
               type="submit"
-              className="px-10 py-3 text-lg rounded-md bg-slate-800 text-white font-semibold hover:bg-slate-900 transition cursor-pointer"
+              className="px-10 py-3 text-lg rounded-md bg-slate-800 text-white font-semibold cursor-pointer"
             >
               Guardar venta
             </button>
           </div>
         </form>
       </div>
-
-      {/* MODAL ÉXITO */}
-      {success && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center">
-          <div className="absolute inset-0 bg-black/40"></div>
-
-          <div className="relative bg-white rounded-xl shadow-xl w-full max-w-md p-6 text-center">
-            <div className="flex justify-center mb-4">
-              <div className="h-14 w-14 rounded-full bg-green-100 flex items-center justify-center">
-                <svg
-                  className="h-8 w-8 text-green-600"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="2"
-                  viewBox="0 0 24 24"
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    d="M5 13l4 4L19 7"
-                  />
-                </svg>
-              </div>
-            </div>
-
-            <h3 className="text-xl font-semibold text-slate-800">
-              Venta guardada
-            </h3>
-
-            <p className="text-slate-500 mt-1">
-              La póliza se ha registrado correctamente
-            </p>
-
-            <button
-              onClick={() => navigate("/crm/libro-ventas")}
-              className="mt-6 px-6 py-3 bg-slate-800 text-white rounded-lg hover:bg-slate-900 transition cursor-pointer"
-            >
-              Volver al libro de ventas
-            </button>
-          </div>
-        </div>
-      )}
     </div>
   );
 };
 
-/* CAMPO AUXILIAR */
+/* CAMPO AUX */
 const Field = ({
   label,
   children,
