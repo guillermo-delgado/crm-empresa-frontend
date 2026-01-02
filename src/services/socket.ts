@@ -4,8 +4,8 @@ let socket: Socket | null = null;
 
 export const getSocket = () => {
   if (!socket) {
-    socket = io("http://localhost:3001", {
-      transports: ["websocket"],
+    socket = io(import.meta.env.VITE_API_URL, {
+      withCredentials: true,
     });
   }
   return socket;
