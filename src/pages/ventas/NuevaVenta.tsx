@@ -47,7 +47,7 @@ const NuevaVenta = () => {
     createdBy: "", // ← NUEVO (solo admin)
   });
 
-  const [success, setSuccess] = useState(false);
+ // const [success, setSuccess] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   /* =========================
@@ -84,7 +84,7 @@ const NuevaVenta = () => {
           : {}),
       });
 
-      setSuccess(true);
+     // setSuccess(true);
 
       setForm({
         fechaEfecto: "",
