@@ -107,7 +107,7 @@ const NuevaVenta = () => {
   };
 
   return (
-    <div className="min-h-screen bg-slate-100 px-10 py-12">
+  <div className="bg-slate-100 px-6 py-6">  
       <div className="max-w-6xl mx-auto">
 
         {/* CABECERA */}
@@ -134,7 +134,8 @@ const NuevaVenta = () => {
           onSubmit={handleSubmit}
           className="bg-white border border-slate-300 rounded-xl shadow-md"
         >
-          <div className="p-10 grid grid-cols-1 md:grid-cols-2 gap-x-10 gap-y-8">
+          <div className="p-6 grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-6">
+
 
             {/* FECHA */}
             <Field label="Fecha de efecto">
@@ -284,7 +285,8 @@ const NuevaVenta = () => {
             </div>
           )}
 
-          <div className="px-10 py-6 bg-slate-50 border-t border-slate-300 flex justify-end">
+          <div className="sticky bottom-0 bg-slate-50 px-6 py-4 border-t border-slate-300 flex justify-end">
+
             <button
               type="submit"
               className="px-10 py-3 text-lg rounded-md bg-slate-800 text-white font-semibold cursor-pointer"
