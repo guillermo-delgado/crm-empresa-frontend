@@ -28,6 +28,15 @@ type VentaAPI = {
   };
 };
 
+type VentaEditando = {
+  data: VentaAPI;
+  original: VentaAPI;
+  changedFields: string[];
+  solicitudId?: string;
+  fromSocket?: boolean;
+};
+
+
 
 export default function LibroVentas() {
   const navigate = useNavigate();
@@ -61,7 +70,8 @@ const [solicitudes, setSolicitudes] = useState<any[]>([]);
   const [ventas, setVentas] = useState<VentaAPI[]>([]);
   const [loading, setLoading] = useState(false);
 
-  const [ventaEditando, setVentaEditando] = useState<VentaAPI | null>(null);
+  const [ventaEditando, setVentaEditando] = useState<VentaEditando | null>(null);
+
   const [ventaAEliminar, setVentaAEliminar] = useState<VentaAPI | null>(null);
 
   const [aseguradora, setAseguradora] = useState("ALL");
