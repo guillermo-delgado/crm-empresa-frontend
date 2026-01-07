@@ -3,7 +3,7 @@ import api from "../../services/api";
 import { useNavigate } from "react-router-dom";
 
 const ramosDisponibles = [
-  "Auto",
+  "Autos",
   "Hogar",
   "Vida",
   "Accidentes",

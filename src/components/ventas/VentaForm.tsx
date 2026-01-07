@@ -2,11 +2,17 @@ import { useEffect, useRef, useState } from "react";
 import api from "../../services/api";
 
 type Props = {
-  initialData?: any;
-  onSubmit: (data: any) => void;
-  onCancel?: () => void;
+  initialData: any;
+  originalData?: any;
+  changedFields?: string[];
+  hideActions?: boolean;
   submitLabel?: string;
+  onSubmit?: (data: any) => void;
+  onCancel?: () => void;
 };
+
+
+
 
 type Usuario = {
   _id: string;
@@ -39,7 +45,7 @@ function toInputDate(value?: string) {
 
 
 const ramosDisponibles = [
-  "Auto",
+  "Autos",
   "Hogar",
   "Vida",
   "Accidentes",
@@ -56,10 +62,16 @@ const ramosDisponibles = [
 
 export default function VentaForm({
   initialData,
+  originalData = null,   // ✅ ← ESTA LÍNEA ES LA CLAVE
+  submitLabel,
   onSubmit,
   onCancel,
-  submitLabel = "Guardar cambios",
+  changedFields = [],
+  hideActions = false,
 }: Props) {
+
+
+
   const dateRef = useRef<HTMLInputElement>(null);
 
   const user = JSON.parse(localStorage.getItem("user") || "{}");
@@ -79,6 +91,52 @@ export default function VentaForm({
     actividad: "",
     observaciones: "",
   });
+
+const normalizeValue = (field: string, value: any) => {
+  if (value === undefined || value === null) return "";
+
+  // 📅 Fecha → yyyy-mm-dd
+  if (field === "fechaEfecto") {
+    return String(value).slice(0, 10);
+  }
+
+  // 🔢 Número
+  if (field === "primaNeta") {
+    return Number(value);
+  }
+
+  return String(value).trim();
+};
+
+const isChanged = (field: string) => {
+  // 🟢 Caso 1: viene de solicitud (empleado)
+  if (changedFields.length > 0) {
+    return changedFields.includes(field);
+  }
+
+  // 🟢 Caso 2: edición normal (admin)
+  if (!originalData) return false;
+
+  const original = normalizeValue(field, originalData[field]);
+  const current = normalizeValue(field, form[field]);
+
+  return original !== current;
+};
+
+
+
+const getOriginalValue = (field: string) => {
+  if (!initialData) return "";
+
+  let value = initialData[field];
+
+  if (field === "fechaEfecto" && value) {
+    return String(value).slice(0, 10);
+  }
+
+  return String(value ?? "");
+};
+
 
   /* =========================
      CARGAR USUARIOS (ADMIN)
@@ -134,28 +192,48 @@ useEffect(() => {
 
         {/* FECHA */}
         <Field label="Fecha de efecto">
-          <input
-            ref={dateRef}
-            type="date"
-            name="fechaEfecto"
-            value={form.fechaEfecto}
-            onChange={handleChange}
-            onClick={() => dateRef.current?.showPicker()}
-            className="input cursor-pointer"
-          />
+         <input
+  ref={dateRef}
+  type="date"
+  name="fechaEfecto"
+  value={form.fechaEfecto}
+  onChange={handleChange}
+  onClick={() => dateRef.current?.showPicker()}
+  className={`input cursor-pointer ${
+    isChanged("fechaEfecto")
+      ? "border-red-500 ring-1 ring-red-400"
+      : ""
+  }`}
+/>
+
+ 
+
+ {isChanged("fechaEfecto") && originalData && (
+  <p className="text-red-600 text-xs mt-1">
+    Antes: {originalData.fechaEfecto ?? "-"} 
+  </p>
+)}
+
+
+
         </Field>
 
         {/* USUARIO (SOLO ADMIN) */}
         {isAdmin && (
           <Field label="Usuario">
             <input
-              list="usuarios-list"
-              name="createdBy"
-              value={form.createdBy}
-              onChange={handleChange}
-              className="input cursor-pointer"
-              placeholder="Numma, nombre o email"
-            />
+  list="usuarios-list"
+  name="createdBy"
+  value={form.createdBy}
+  onChange={handleChange}
+  className={`input cursor-pointer ${
+    isChanged("createdBy")
+      ? "border-red-500 ring-1 ring-red-400"
+      : ""
+  }`}
+  placeholder="Numma, nombre o email"
+/>
+
             <datalist id="usuarios-list">
               {usuarios.map((u) => (
                 <option
@@ -180,6 +258,14 @@ useEffect(() => {
             <option value="Mapfre">Mapfre</option>
             <option value="Verti">Verti</option>
           </select>
+
+
+
+   {isChanged("aseguradora") && originalData && (
+  <p className="text-red-600 text-xs mt-1">
+    Antes: {originalData.aseguradora ?? "-"} 
+  </p>
+)}
         </Field>
 
         <Field label="Ramo">
@@ -196,6 +282,14 @@ useEffect(() => {
               <option key={r} value={r} />
             ))}
           </datalist>
+
+          
+
+  {isChanged("ramo") && originalData && (
+  <p className="text-red-600 text-xs mt-1">
+    Antes: {originalData.ramo ?? "-"} 
+  </p>
+)}
         </Field>
 
         <Field label="Número de póliza">
@@ -205,6 +299,13 @@ useEffect(() => {
             onChange={handleChange}
             className="input cursor-pointer"
           />
+    
+
+  {isChanged("numeroPoliza") && originalData && (
+  <p className="text-red-600 text-xs mt-1">
+    Antes: {originalData.numeroPoliza ?? "-"} 
+  </p>
+)}
         </Field>
 
         <Field label="Tomador">
@@ -214,16 +315,40 @@ useEffect(() => {
             onChange={handleChange}
             className="input cursor-pointer"
           />
+
+          
+
+  {isChanged("tomador") && originalData && (
+  <p className="text-red-600 text-xs mt-1">
+    Antes: {originalData.tomador ?? "-"} 
+  </p>
+)}
         </Field>
 
         <Field label="Prima neta (€)">
           <input
-            type="number"
-            name="primaNeta"
-            value={form.primaNeta}
-            onChange={handleChange}
-            className="input cursor-pointer"
-          />
+  type="number"
+  name="primaNeta"
+  value={form.primaNeta}
+  onChange={handleChange}
+  className={`input cursor-pointer ${
+    isChanged("primaNeta")
+      ? "border-red-500 ring-1 ring-red-400"
+      : ""
+  }`}
+/>
+
+{/* Prueba */}
+{isChanged("primaNeta") && originalData && (
+  <p className="text-red-600 text-xs mt-1">
+    Antes: {originalData.primaNeta ?? "-"} €
+  </p>
+)}
+
+
+
+
+{/* fin prueba */}
         </Field>
 
         <Field label="Forma de pago">
@@ -241,12 +366,17 @@ useEffect(() => {
 
         <Field label="Actividad">
           <select
-            name="actividad"
-            value={form.actividad}
-            onChange={handleChange}
-            className="input cursor-pointer"
-            required
-          >
+  name="actividad"
+  value={form.actividad}
+  onChange={handleChange}
+  className={`input cursor-pointer ${
+    isChanged("actividad")
+      ? "border-red-500 ring-1 ring-red-400"
+      : ""
+  }`}
+  required
+>
+
             <option value="">Selecciona actividad</option>
             <option value="SGC">SGC</option>
             <option value="OFICINA">OFICINA</option>
@@ -254,6 +384,14 @@ useEffect(() => {
             <option value="INTERNET">INTERNET</option>
             <option value="RED PERSONAL">RED PERSONAL</option>
           </select>
+
+          
+
+  {isChanged("actividad") && originalData && (
+  <p className="text-red-600 text-xs mt-1">
+    Antes: {originalData.actividad ?? "-"} 
+  </p>
+)}
         </Field>
 
         <Field label="Observaciones">
@@ -264,6 +402,13 @@ useEffect(() => {
             rows={3}
             className="input resize-none"
           />
+          
+
+  {isChanged("observaciones") && originalData && (
+  <p className="text-red-600 text-xs mt-1">
+    Antes: {originalData.observaciones ?? "-"} 
+  </p>
+)}
         </Field>
 
       </div>

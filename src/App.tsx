@@ -6,16 +6,12 @@ import NuevaVenta from "./pages/ventas/NuevaVenta";
 import Login from "./pages/Login";
 import ProtectedRoute from "./components/ProtectedRoute";
 import CrearUsuario from "./pages/admin/CrearUsuario";
+import Layout from "./components/Layout";
 
 /* 🔔 SOCKET */
 import { getSocket } from "./services/socket";
 
 export default function App() {
-
-  /* =========================
-     SOCKET DIAGNÓSTICO
-     ⚠️ PROVISIONAL (BORRAR)
-  ========================= */
   useEffect(() => {
     const socket = getSocket();
 
@@ -33,10 +29,26 @@ export default function App() {
       console.log("🔥 [PROVISIONAL] TEST EVENT RECIBIDO:", msg);
     });
 
+    socket.on("SOLICITUD_RESUELTA", (data: any) => {
+      console.log("🧹 Solicitud resuelta:", data);
+
+      if (data?.ventaId) {
+        localStorage.removeItem(`venta_pending_${data.ventaId}`);
+        return;
+      }
+
+      Object.keys(localStorage).forEach((key) => {
+        if (key.startsWith("venta_pending_")) {
+          localStorage.removeItem(key);
+        }
+      });
+    });
+
     return () => {
       socket.off("connect");
       socket.off("connect_error");
       socket.off("test_event");
+      socket.off("SOLICITUD_RESUELTA");
     };
   }, []);
 
@@ -46,12 +58,14 @@ export default function App() {
         {/* LOGIN */}
         <Route path="/login" element={<Login />} />
 
-        {/* RUTAS PROTEGIDAS */}
+        {/* ===== RUTAS ADMIN CON LAYOUT ===== */}
         <Route
           path="/crm/libro-ventas"
           element={
-            <ProtectedRoute>
-              <LibroVentas />
+            <ProtectedRoute adminOnly>
+              <Layout>
+                <LibroVentas />
+              </Layout>
             </ProtectedRoute>
           }
         />
@@ -59,18 +73,21 @@ export default function App() {
         <Route
           path="/crm/nueva-venta"
           element={
-            <ProtectedRoute>
-              <NuevaVenta />
+            <ProtectedRoute adminOnly>
+              <Layout>
+                <NuevaVenta />
+              </Layout>
             </ProtectedRoute>
           }
         />
 
-        {/* NUEVA SECCIÓN ADMIN */}
         <Route
           path="/crm/usuarios"
           element={
             <ProtectedRoute adminOnly>
-              <CrearUsuario />
+              <Layout>
+                <CrearUsuario />
+              </Layout>
             </ProtectedRoute>
           }
         />

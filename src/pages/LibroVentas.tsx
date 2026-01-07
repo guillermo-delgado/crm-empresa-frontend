@@ -6,6 +6,7 @@ import ConfirmModal from "../components/ventas/ConfirmModal";
 import api from "../services/api";
 import { useNavigate } from "react-router-dom";
 
+
 /* 🔔 SOCKET */
 import { getSocket } from "../services/socket";
 
@@ -26,6 +27,7 @@ type VentaAPI = {
     nombre: string;
   };
 };
+
 
 export default function LibroVentas() {
   const navigate = useNavigate();
@@ -51,6 +53,9 @@ const minPeriodo = new Date(hoy.getFullYear(), hoy.getMonth(), 1);
 const maxPeriodo = new Date(hoy.getFullYear(), hoy.getMonth() + 2, 1);
 
 const [solicitudesPendientes, setSolicitudesPendientes] = useState(0);
+const [showSolicitudesModal, setShowSolicitudesModal] = useState(false);
+const [solicitudes, setSolicitudes] = useState<any[]>([]);
+
 
 
   const [ventas, setVentas] = useState<VentaAPI[]>([]);
@@ -407,28 +412,63 @@ useEffect(() => {
 
 
       {/* TABLA */}
-      {!loading && (
-        <VentasTable
-          ventas={ventasFiltradas.map(v => ({
-            _id: v._id,
-            fecha: new Date(v.fechaEfecto).toLocaleDateString(),
-            poliza: v.numeroPoliza,
-            tomador: v.tomador,
-            aseguradora: v.aseguradora,
-            ramo: v.ramo,
-            prima: v.primaNeta,
-            usuario: v.createdBy?.nombre || "-",
-          }))}
-          onEdit={(row) => {
-            const original = ventas.find(v => v._id === row._id);
-            if (original) setVentaEditando(original);
-          }}
-          onDelete={(row) => {
-            const original = ventas.find(v => v._id === row._id);
-            if (original) setVentaAEliminar(original);
-          }}
-        />
-      )}
+     {!loading && (
+  <div className="w-full overflow-x-auto">
+    {/* 🔒 Evita que la tabla se aplaste en móvil */}
+    <div className="min-w-[1100px]">
+      <VentasTable
+        ventas={ventasFiltradas.map(v => ({
+          _id: v._id,
+          fecha: new Date(v.fechaEfecto).toLocaleDateString(),
+          poliza: v.numeroPoliza,
+          tomador: v.tomador,
+          aseguradora: v.aseguradora,
+          ramo: v.ramo,
+          prima: v.primaNeta,
+          usuario: v.createdBy?.nombre || "-",
+        }))}
+        onEdit={(row) => {
+          const original = ventas.find(v => v._id === row._id);
+          if (!original) return;
+
+          let ventaInicial: any = { ...original };
+
+          // 🔁 Reaplicar última edición pendiente del empleado
+          const stored = localStorage.getItem(
+            `venta_pending_${original._id}`
+          );
+
+          if (stored) {
+            try {
+              const payload = JSON.parse(stored);
+              ventaInicial = {
+                ...ventaInicial,
+                ...payload,
+              };
+            } catch {}
+          }
+
+          // 🗓 Normalizar fecha
+          ventaInicial.fechaEfecto = String(
+            ventaInicial.fechaEfecto
+          ).slice(0, 10);
+
+          setVentaEditando({
+            data: ventaInicial,    // con cambios
+            original: original,    // 🔑 base real (para "antes:")
+            changedFields: [],     // modo edición normal
+            fromSocket: false,
+          });
+        }}
+        onDelete={(row) => {
+          const original = ventas.find(v => v._id === row._id);
+          if (original) setVentaAEliminar(original);
+        }}
+      />
+    </div>
+  </div>
+)}
+
 
       
       {/* ACCIONES */}
@@ -459,44 +499,138 @@ useEffect(() => {
       {/* 👇 BOTÓN PROVISIONAL */}
     {isAdmin && (
   <button
-    onClick={async () => {
-      try {
-        const res = await api.get("/solicitudes");
+  onClick={async () => {
+    try {
+      const res = await api.get("/solicitudes");
+      setSolicitudes(res.data || []);
+      setSolicitudesPendientes(res.data.length);
+      setShowSolicitudesModal(true);
+    } catch {
+      alert("Error cargando solicitudes");
+    }
+  }}
+  className="relative border px-4 py-2 rounded text-sm cursor-pointer"
+>
+  Ver solicitudes pendientes
 
-        if (!res.data.length) {
-          alert("No hay solicitudes pendientes");
-          setSolicitudesPendientes(0);
-          return;
+  {solicitudesPendientes > 0 && (
+    <span className="absolute -top-2 -right-2 bg-red-600 text-white text-xs font-bold rounded-full px-2 py-0.5">
+      {solicitudesPendientes}
+    </span>
+  )}
+</button>
+
+  
+)}
+{showSolicitudesModal && (
+  <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
+    <div className="bg-white rounded-xl shadow-2xl w-full max-w-4xl max-h-[90vh] flex flex-col">
+
+      {/* HEADER */}
+      <div className="px-6 py-4 border-b">
+        <h2 className="text-xl font-semibold">
+          Solicitudes pendientes
+        </h2>
+      </div>
+
+      {/* CONTENIDO */}
+      <div className="flex-1 overflow-y-auto px-6 py-4 space-y-3">
+        {solicitudes.map((s) => (
+          <div
+            key={s._id}
+            className="p-3 rounded border hover:bg-slate-100 cursor-pointer"
+            onClick={async () => {
+  try {
+    setShowSolicitudesModal(false);
+
+    if (s.tipo !== "EDITAR_VENTA") return;
+
+    // 1️⃣ Obtener venta original
+    const res = await api.get(`/ventas/${s.venta._id}`);
+    const original = res.data;
+
+    // 2️⃣ Construir venta de revisión
+    const ventaRevision = {
+      ...original,
+      ...s.payload,
+      createdBy: original.createdBy,
+      fechaEfecto: (() => {
+        const f = s.payload?.fechaEfecto ?? original.fechaEfecto;
+        if (!f) return "";
+
+        if (typeof f === "string" && f.includes("/")) {
+          const [d, m, y] = f.split("/");
+          return `${y}-${m.padStart(2, "0")}-${d}`;
         }
 
-        setSolicitudesPendientes(res.data.length);
+        return String(f).slice(0, 10);
+      })(),
+    };
 
-        const listado = res.data
-          .map(
-            (s: any, i: number) => `
-${i + 1}. ${s.tipo}
-Póliza: ${s.venta?.numeroPoliza || "-"}
-Empleado: ${s.solicitadoPor?.nombre || "-"}
-`
-          )
-          .join("\n----------------\n");
+    // 3️⃣ Detectar cambios reales
+    const CAMPOS_FORMULARIO = [
+      "fechaEfecto",
+      "numeroPoliza",
+      "tomador",
+      "aseguradora",
+      "ramo",
+      "primaNeta",
+      "formaPago",
+      "actividad",
+      "observaciones",
+    ];
 
-        alert(`Solicitudes pendientes:\n\n${listado}`);
-      } catch (e) {
-        alert("Error cargando solicitudes");
+    const changedFields = CAMPOS_FORMULARIO.filter((field) => {
+      const o = original[field];
+      const r = ventaRevision[field];
+
+      if (field === "fechaEfecto") {
+        return String(o).slice(0, 10) !== String(r).slice(0, 10);
       }
-    }}
-    className="relative border px-4 py-2 rounded text-sm cursor-pointer"
-  >
-    Ver solicitudes pendientes
 
-    {solicitudesPendientes > 0 && (
-      <span className="absolute -top-2 -right-2 bg-red-600 text-white text-xs font-bold rounded-full px-2 py-0.5">
-        {solicitudesPendientes}
-      </span>
-    )}
-  </button>
+      return String(o ?? "") !== String(r ?? "");
+    });
+
+    // 4️⃣ 🔥 ABRIR MODAL DE EDICIÓN
+    setVentaEditando({
+      data: ventaRevision,
+      original,
+      changedFields,
+      solicitudId: s._id,
+      fromSocket: true,
+    });
+
+  } catch (e) {
+    alert("Error cargando la venta");
+  }
+}}
+
+          >
+            <div className="text-sm font-medium">
+              {s.venta?.tomador || "Sin tomador"}
+            </div>
+            <div className="text-xs text-slate-500">
+              Modificar venta
+            </div>
+          </div>
+        ))}
+      </div>
+
+      {/* FOOTER */}
+      <div className="px-6 py-4 border-t flex justify-end">
+        <button
+          onClick={() => setShowSolicitudesModal(false)}
+          className="px-5 py-2 rounded bg-slate-800 text-white hover:bg-slate-900"
+        >
+          Cerrar
+        </button>
+      </div>
+
+    </div>
+  </div>
 )}
+
+
 
 
     </>
