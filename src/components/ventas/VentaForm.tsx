@@ -413,24 +413,27 @@ useEffect(() => {
 
       </div>
 
-      <div className="px-10 py-6 bg-slate-50 border-t border-slate-300 flex justify-end gap-4">
-        {onCancel && (
-          <button
-            type="button"
-            onClick={onCancel}
-            className="px-6 py-2 border rounded cursor-pointer"
-          >
-            Cancelar
-          </button>
-        )}
+      {!hideActions && (
+  <div className="px-10 py-6 bg-slate-50 border-t border-slate-300 flex justify-end gap-4">
+    {onCancel && (
+      <button
+        type="button"
+        onClick={onCancel}
+        className="px-6 py-2 border rounded cursor-pointer"
+      >
+        Cancelar
+      </button>
+    )}
 
-        <button
-          type="submit"
-          className="px-8 py-3 rounded-md bg-slate-800 text-white font-semibold cursor-pointer"
-        >
-          {submitLabel}
-        </button>
-      </div>
+    <button
+      type="submit"
+      className="px-8 py-3 rounded-md bg-slate-800 text-white font-semibold cursor-pointer"
+    >
+      {submitLabel}
+    </button>
+  </div>
+)}
+
     </form>
   );
 }
