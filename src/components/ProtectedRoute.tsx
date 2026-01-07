@@ -1,7 +1,8 @@
 import { Navigate } from "react-router-dom";
+import type { ReactNode } from "react";
 
 type Props = {
-  children: React.ReactNode;
+  children: ReactNode;
   adminOnly?: boolean;
 };
 
