@@ -122,21 +122,10 @@ const normalizeValue = (field: FormField, value: any) => {
   return String(value).trim();
 };
 
+
+
+
 const isChanged = (field: FormField) => {
-  if (changedFields.length > 0) {
-    return changedFields.includes(field);
-  }
-
-  if (!originalData) return false;
-
-  const original = normalizeValue(field, originalData[field]);
-  const current = normalizeValue(field, form[field]);
-
-  return original !== current;
-};
-
-
-const isChanged = (field: string) => {
   // 🟢 Caso 1: viene de solicitud (empleado)
   if (changedFields.length > 0) {
     return changedFields.includes(field);
@@ -150,6 +139,7 @@ const isChanged = (field: string) => {
 
   return original !== current;
 };
+
 
 
 
@@ -221,7 +211,7 @@ useEffect(() => {
   onChange={handleChange}
   onClick={() => dateRef.current?.showPicker()}
   className={`input cursor-pointer ${
-    isChanged("fechaEfecto")
+    isChanged("fechaEfecto" as FormField)
       ? "border-red-500 ring-1 ring-red-400"
       : ""
   }`}
@@ -229,7 +219,7 @@ useEffect(() => {
 
  
 
- {isChanged("fechaEfecto") && originalData && (
+ {isChanged("fechaEfecto" as FormField) && originalData && (
   <p className="text-red-600 text-xs mt-1">
     Antes: {originalData.fechaEfecto ?? "-"} 
   </p>
@@ -248,7 +238,7 @@ useEffect(() => {
   value={form.createdBy}
   onChange={handleChange}
   className={`input cursor-pointer ${
-    isChanged("createdBy")
+    isChanged("createdBy" as FormField)
       ? "border-red-500 ring-1 ring-red-400"
       : ""
   }`}
@@ -282,7 +272,7 @@ useEffect(() => {
 
 
 
-   {isChanged("aseguradora") && originalData && (
+   {isChanged("aseguradora" as FormField) && originalData && (
   <p className="text-red-600 text-xs mt-1">
     Antes: {originalData.aseguradora ?? "-"} 
   </p>
@@ -306,7 +296,7 @@ useEffect(() => {
 
           
 
-  {isChanged("ramo") && originalData && (
+  {isChanged("ramo" as FormField) && originalData && (
   <p className="text-red-600 text-xs mt-1">
     Antes: {originalData.ramo ?? "-"} 
   </p>
@@ -322,7 +312,7 @@ useEffect(() => {
           />
     
 
-  {isChanged("numeroPoliza") && originalData && (
+  {isChanged("numeroPoliza" as FormField) && originalData && (
   <p className="text-red-600 text-xs mt-1">
     Antes: {originalData.numeroPoliza ?? "-"} 
   </p>
@@ -339,7 +329,7 @@ useEffect(() => {
 
           
 
-  {isChanged("tomador") && originalData && (
+  {isChanged("tomador" as FormField) && originalData && (
   <p className="text-red-600 text-xs mt-1">
     Antes: {originalData.tomador ?? "-"} 
   </p>
@@ -353,14 +343,14 @@ useEffect(() => {
   value={form.primaNeta}
   onChange={handleChange}
   className={`input cursor-pointer ${
-    isChanged("primaNeta")
+    isChanged("primaNeta" as FormField)
       ? "border-red-500 ring-1 ring-red-400"
       : ""
   }`}
 />
 
 {/* Prueba */}
-{isChanged("primaNeta") && originalData && (
+{isChanged("primaNeta" as FormField) && originalData && (
   <p className="text-red-600 text-xs mt-1">
     Antes: {originalData.primaNeta ?? "-"} €
   </p>
@@ -391,7 +381,7 @@ useEffect(() => {
   value={form.actividad}
   onChange={handleChange}
   className={`input cursor-pointer ${
-    isChanged("actividad")
+    isChanged("actividad" as FormField)
       ? "border-red-500 ring-1 ring-red-400"
       : ""
   }`}
@@ -408,7 +398,7 @@ useEffect(() => {
 
           
 
-  {isChanged("actividad") && originalData && (
+  {isChanged("actividad" as FormField) && originalData && (
   <p className="text-red-600 text-xs mt-1">
     Antes: {originalData.actividad ?? "-"} 
   </p>
@@ -425,7 +415,7 @@ useEffect(() => {
           />
           
 
-  {isChanged("observaciones") && originalData && (
+  {isChanged("observaciones" as FormField) && originalData && (
   <p className="text-red-600 text-xs mt-1">
     Antes: {originalData.observaciones ?? "-"} 
   </p>
