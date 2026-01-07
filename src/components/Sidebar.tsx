@@ -9,8 +9,12 @@ import {
 } from "lucide-react";
 
 export default function Sidebar() {
-  // 🔒 Por defecto SIEMPRE colapsado (desktop)
+  // 🔒 Siempre colapsado por defecto
   const [collapsed, setCollapsed] = useState(true);
+
+  // 👤 Usuario actual
+  const user = JSON.parse(localStorage.getItem("user") || "{}");
+  const isAdmin = user?.role === "admin";
 
   return (
     <aside
@@ -43,6 +47,7 @@ export default function Sidebar() {
 
       {/* MENÚ */}
       <nav className="flex-1 px-2 py-4 space-y-1">
+        {/* 📘 Libro de ventas (admin + empleado) */}
         <NavLink
           to="/crm/libro-ventas"
           className={({ isActive }) =>
@@ -57,6 +62,7 @@ export default function Sidebar() {
           {!collapsed && <span className="text-sm">Libro de ventas</span>}
         </NavLink>
 
+        {/* ➕ Nueva venta (admin + empleado) */}
         <NavLink
           to="/crm/nueva-venta"
           className={({ isActive }) =>
@@ -71,23 +77,26 @@ export default function Sidebar() {
           {!collapsed && <span className="text-sm">Nueva venta</span>}
         </NavLink>
 
-        <NavLink
-          to="/crm/usuarios"
-          className={({ isActive }) =>
-            `flex items-center gap-3 px-3 py-2 rounded-md transition-colors ${
-              isActive
-                ? "bg-slate-700 text-white"
-                : "text-slate-300 hover:bg-slate-800 hover:text-white"
-            }`
-          }
-        >
-          <Users size={20} />
-          {!collapsed && <span className="text-sm">Usuarios</span>}
-        </NavLink>
+        {/* 👥 Usuarios (SOLO admin) */}
+        {isAdmin && (
+          <NavLink
+            to="/crm/usuarios"
+            className={({ isActive }) =>
+              `flex items-center gap-3 px-3 py-2 rounded-md transition-colors ${
+                isActive
+                  ? "bg-slate-700 text-white"
+                  : "text-slate-300 hover:bg-slate-800 hover:text-white"
+              }`
+            }
+          >
+            <Users size={20} />
+            {!collapsed && <span className="text-sm">Usuarios</span>}
+          </NavLink>
+        )}
       </nav>
 
-      {/* FOOTER */}
-      {!collapsed && (
+      {/* FOOTER SOLO ADMIN */}
+      {isAdmin && !collapsed && (
         <div className="px-4 py-3 text-xs text-slate-400 border-t border-slate-700">
           Panel administrador
         </div>

@@ -54,47 +54,49 @@ export default function App() {
 
   return (
     <BrowserRouter>
-      <Routes>
-        {/* LOGIN */}
-        <Route path="/login" element={<Login />} />
+  <Routes>
+    {/* LOGIN */}
+    <Route path="/login" element={<Login />} />
 
-        {/* ===== RUTAS ADMIN CON LAYOUT ===== */}
-        <Route
-          path="/crm/libro-ventas"
-          element={
-            <ProtectedRoute adminOnly>
-              <Layout>
-                <LibroVentas />
-              </Layout>
-            </ProtectedRoute>
-          }
-        />
+    {/* ===== RUTAS CRM (ADMIN + EMPLEADOS) ===== */}
+    <Route
+      path="/crm/libro-ventas"
+      element={
+        <ProtectedRoute>
+          <Layout>
+            <LibroVentas />
+          </Layout>
+        </ProtectedRoute>
+      }
+    />
 
-        <Route
-          path="/crm/nueva-venta"
-          element={
-            <ProtectedRoute adminOnly>
-              <Layout>
-                <NuevaVenta />
-              </Layout>
-            </ProtectedRoute>
-          }
-        />
+    <Route
+      path="/crm/nueva-venta"
+      element={
+        <ProtectedRoute>
+          <Layout>
+            <NuevaVenta />
+          </Layout>
+        </ProtectedRoute>
+      }
+    />
 
-        <Route
-          path="/crm/usuarios"
-          element={
-            <ProtectedRoute adminOnly>
-              <Layout>
-                <CrearUsuario />
-              </Layout>
-            </ProtectedRoute>
-          }
-        />
+    {/* ===== SOLO ADMIN ===== */}
+    <Route
+      path="/crm/usuarios"
+      element={
+        <ProtectedRoute adminOnly>
+          <Layout>
+            <CrearUsuario />
+          </Layout>
+        </ProtectedRoute>
+      }
+    />
 
-        {/* DEFAULT */}
-        <Route path="*" element={<Navigate to="/crm/libro-ventas" />} />
-      </Routes>
-    </BrowserRouter>
+    {/* DEFAULT */}
+    <Route path="*" element={<Navigate to="/crm/libro-ventas" />} />
+  </Routes>
+</BrowserRouter>
+
   );
 }
