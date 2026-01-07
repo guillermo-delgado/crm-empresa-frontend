@@ -11,6 +11,21 @@ type Props = {
   onCancel?: () => void;
 };
 
+type FormState = {
+  fechaEfecto: string;
+  createdBy: string;
+  aseguradora: string;
+  ramo: string;
+  numeroPoliza: string;
+  tomador: string;
+  primaNeta: string;
+  formaPago: string;
+  actividad: string;
+  observaciones: string;
+};
+
+type FormField = keyof FormState;
+
 
 
 
@@ -79,7 +94,8 @@ export default function VentaForm({
 
   const [usuarios, setUsuarios] = useState<Usuario[]>([]);
 
-  const [form, setForm] = useState({
+  const [form, setForm] = useState<FormState>({
+
     fechaEfecto: "",
     createdBy: "", // ← NUEVO (solo admin)
     aseguradora: "",
@@ -92,21 +108,33 @@ export default function VentaForm({
     observaciones: "",
   });
 
-const normalizeValue = (field: string, value: any) => {
+const normalizeValue = (field: FormField, value: any) => {
   if (value === undefined || value === null) return "";
 
-  // 📅 Fecha → yyyy-mm-dd
   if (field === "fechaEfecto") {
     return String(value).slice(0, 10);
   }
 
-  // 🔢 Número
   if (field === "primaNeta") {
     return Number(value);
   }
 
   return String(value).trim();
 };
+
+const isChanged = (field: FormField) => {
+  if (changedFields.length > 0) {
+    return changedFields.includes(field);
+  }
+
+  if (!originalData) return false;
+
+  const original = normalizeValue(field, originalData[field]);
+  const current = normalizeValue(field, form[field]);
+
+  return original !== current;
+};
+
 
 const isChanged = (field: string) => {
   // 🟢 Caso 1: viene de solicitud (empleado)
@@ -125,17 +153,7 @@ const isChanged = (field: string) => {
 
 
 
-const getOriginalValue = (field: string) => {
-  if (!initialData) return "";
 
-  let value = initialData[field];
-
-  if (field === "fechaEfecto" && value) {
-    return String(value).slice(0, 10);
-  }
-
-  return String(value ?? "");
-};
 
 
   /* =========================
@@ -178,10 +196,13 @@ useEffect(() => {
     setForm({ ...form, [e.target.name]: e.target.value });
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
+ const handleSubmit = (e: React.FormEvent) => {
+  e.preventDefault();
+  if (onSubmit) {
     onSubmit(form);
-  };
+  }
+};
+
 
   return (
     <form
