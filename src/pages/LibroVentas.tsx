@@ -72,6 +72,14 @@ const [solicitudesPendientes, setSolicitudesPendientes] = useState(0);
 const [showSolicitudesModal, setShowSolicitudesModal] = useState(false);
 const [solicitudes, setSolicitudes] = useState<any[]>([]);
 const [showDeleteInfo, setShowDeleteInfo] = useState(false);
+const solicitudesOrdenadas = useMemo(() => {
+  return [...solicitudes].sort(
+    (a, b) =>
+      new Date(a.createdAt).getTime() -
+      new Date(b.createdAt).getTime()
+  );
+}, [solicitudes]);
+
 
 
 
@@ -89,6 +97,7 @@ const [ventaAEliminar, setVentaAEliminar] = useState<VentaAEliminar | null>(null
   const [aseguradora, setAseguradora] = useState("ALL");
   const [usuario, setUsuario] = useState("ALL");
   const [ramo, setRamo] = useState("ALL");
+  
 
   /* =========================
      SOLICITUDES PENDIENTES
@@ -153,11 +162,7 @@ const onSolicitudResuelta = () => {
   socket.on("SOLICITUD_CREADA", onSolicitudCreada);
   socket.on("SOLICITUD_RESUELTA", onSolicitudResuelta);
 
-  const solicitudesOrdenadas = [...solicitudes].sort(
-  (a, b) =>
-    new Date(a.createdAt).getTime() -
-    new Date(b.createdAt).getTime()
-);
+ 
 
 
   return () => {
@@ -560,7 +565,8 @@ const onSolicitudResuelta = () => {
 
       {/* CONTENIDO */}
       <div className="flex-1 overflow-y-auto px-6 py-4 space-y-3">
-        {solicitudes.map((s) => (
+        {solicitudesOrdenadas.map((s) => (
+
 
           <div
             key={s._id}
