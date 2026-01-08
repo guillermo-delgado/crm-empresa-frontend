@@ -1,10 +1,13 @@
 import { useEffect, useMemo, useState } from "react";
 import KPICard from "../components/crm/KPICard";
 import VentasTable from "../components/crm/VentasTable";
+import InfoModal from "../components/ventas/InfoModal";
 import EditVentaModal from "../components/ventas/EditVentaModal";
 import ConfirmModal from "../components/ventas/ConfirmModal";
 import api from "../services/api";
 import { useNavigate } from "react-router-dom";
+
+
 
 
 /* 🔔 SOCKET */
@@ -36,6 +39,10 @@ type VentaEditando = {
   fromSocket?: boolean;
 };
 
+type VentaAEliminar = VentaAPI & {
+  solicitudId?: string;
+};
+
 
 
 export default function LibroVentas() {
@@ -64,6 +71,11 @@ const maxPeriodo = new Date(hoy.getFullYear(), hoy.getMonth() + 2, 1);
 const [solicitudesPendientes, setSolicitudesPendientes] = useState(0);
 const [showSolicitudesModal, setShowSolicitudesModal] = useState(false);
 const [solicitudes, setSolicitudes] = useState<any[]>([]);
+const [showDeleteInfo, setShowDeleteInfo] = useState(false);
+
+
+
+
 
 
 
@@ -71,8 +83,8 @@ const [solicitudes, setSolicitudes] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
 
   const [ventaEditando, setVentaEditando] = useState<VentaEditando | null>(null);
-
-  const [ventaAEliminar, setVentaAEliminar] = useState<VentaAPI | null>(null);
+const [ventaAEliminar, setVentaAEliminar] = useState<VentaAEliminar | null>(null);
+  
 
   const [aseguradora, setAseguradora] = useState("ALL");
   const [usuario, setUsuario] = useState("ALL");
@@ -82,7 +94,13 @@ const [solicitudes, setSolicitudes] = useState<any[]>([]);
      SOLICITUDES PENDIENTES
   ========================= */
 
-
+const cargarSolicitudes = async () => {
+  try {
+    const res = await api.get("/solicitudes");
+    setSolicitudes(res.data || []);
+    setSolicitudesPendientes(res.data.length);
+  } catch {}
+};
 
   const fetchLibroVentas = async () => {
     setLoading(true);
@@ -104,16 +122,9 @@ useEffect(() => {
 // 2️⃣ Cargar solicitudes pendientes al entrar (ADMIN)
 useEffect(() => {
   if (!isAdmin) return;
-
-  const cargarSolicitudes = async () => {
-    try {
-      const res = await api.get("/solicitudes");
-      setSolicitudesPendientes(res.data.length);
-    } catch {}
-  };
-
   cargarSolicitudes();
 }, [isAdmin]);
+
 
 // 3️⃣ Socket tiempo real
 useEffect(() => {
@@ -124,17 +135,14 @@ useEffect(() => {
     fetchLibroVentas();
   };
 
-  const onSolicitudCreada = () => {
-    if (isAdmin) {
-      setSolicitudesPendientes((prev) => prev + 1);
-    }
-  };
+const onSolicitudCreada = () => {
+  if (isAdmin) cargarSolicitudes();
+};
 
-  const onSolicitudResuelta = () => {
-    if (isAdmin) {
-      setSolicitudesPendientes((prev) => Math.max(prev - 1, 0));
-    }
-  };
+const onSolicitudResuelta = () => {
+  if (isAdmin) cargarSolicitudes();
+};
+
 
   socket.on("VENTA_CREADA", (data) => {
   console.log("🟣 EVENTO VENTA_CREADA RECIBIDO:", data);
@@ -144,6 +152,13 @@ useEffect(() => {
   socket.on("VENTA_ELIMINADA", onVenta);
   socket.on("SOLICITUD_CREADA", onSolicitudCreada);
   socket.on("SOLICITUD_RESUELTA", onSolicitudResuelta);
+
+  const solicitudesOrdenadas = [...solicitudes].sort(
+  (a, b) =>
+    new Date(a.createdAt).getTime() -
+    new Date(b.createdAt).getTime()
+);
+
 
   return () => {
     socket.off("VENTA_CREADA", onVenta);
@@ -546,15 +561,16 @@ useEffect(() => {
       {/* CONTENIDO */}
       <div className="flex-1 overflow-y-auto px-6 py-4 space-y-3">
         {solicitudes.map((s) => (
+
           <div
             key={s._id}
             className="p-3 rounded border hover:bg-slate-100 cursor-pointer"
             onClick={async () => {
   try {
-    setShowSolicitudesModal(false);
+  setShowSolicitudesModal(false);
 
-    if (s.tipo !== "EDITAR_VENTA") return;
-
+  // 🟢 EDITAR VENTA (lo que ya tenías)
+  if (s.tipo === "EDITAR_VENTA") {
     // 1️⃣ Obtener venta original
     const res = await api.get(`/ventas/${s.venta._id}`);
     const original = res.data;
@@ -610,9 +626,37 @@ useEffect(() => {
       fromSocket: true,
     });
 
-  } catch (e) {
-    alert("Error cargando la venta");
+    return;
   }
+
+  // 🔴 ELIMINAR VENTA 
+if (s.tipo === "ELIMINAR_VENTA") {
+  const res = await api.get(`/ventas/${s.venta._id}`);
+  const original = res.data;
+
+  const ventaDelete = {
+    ...original,
+    fechaEfecto: String(original.fechaEfecto).slice(0, 10),
+  };
+
+  setVentaEditando({
+    data: ventaDelete,
+    original,
+    changedFields: ["__DELETE__"],
+    solicitudId: s._id,
+    fromSocket: true,
+  });
+
+  return;
+}
+
+
+
+
+} catch (e) {
+  alert("Error cargando la solicitud");
+}
+
 }}
 
           >
@@ -661,26 +705,43 @@ useEffect(() => {
       )}
 
       {ventaAEliminar && (
-        <ConfirmModal
-          title="Eliminar venta"
-          description={`¿Eliminar la póliza ${ventaAEliminar.numeroPoliza}?`}
-          onCancel={() => setVentaAEliminar(null)}
-          onConfirm={async () => {
-            try {
-              await api.delete(`/ventas/${ventaAEliminar._id}`);
-              fetchLibroVentas();
-            } catch (error: any) {
-              if (error.response?.status === 403) {
-                alert(error.response.data.message);
-                setSolicitudesPendientes((prev) => prev + 1);
+  <ConfirmModal
+    title="Eliminar venta"
+    description={`¿Eliminar la póliza ${ventaAEliminar.numeroPoliza}?`}
+    onCancel={() => setVentaAEliminar(null)}
+    onConfirm={async () => {
+      try {
+        await api.delete(`/ventas/${ventaAEliminar._id}`);
 
-              }
-            } finally {
-              setVentaAEliminar(null);
-            }
-          }}
-        />
-      )}
+        // ADMIN → eliminación directa
+        fetchLibroVentas();
+        setVentaAEliminar(null);
+
+      } catch (error: any) {
+        if (error.response?.status === 403) {
+          // EMPLEADO → solo info, NADA MÁS
+          setVentaAEliminar(null);
+          setShowDeleteInfo(true);
+          return;
+        }
+      }
+    }}
+  />
+)}
+
+{showDeleteInfo && (
+  <InfoModal
+    type="delete"
+    onClose={() => {
+      setShowDeleteInfo(false);
+      fetchLibroVentas();
+    }}
+  />
+)}
+
+
+
+
     </div>
   );
 }

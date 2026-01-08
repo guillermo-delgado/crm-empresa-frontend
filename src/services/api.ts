@@ -18,24 +18,18 @@ api.interceptors.request.use((config) => {
 });
 
 /* =========================
-   RESPONSE → control errores auth
+   RESPONSE → control errores
 ========================= */
 api.interceptors.response.use(
   (response) => response,
   (error) => {
     const status = error.response?.status;
 
-    // 🔴 SOLO token inválido o caducado
     if (status === 401) {
       localStorage.removeItem("token");
       localStorage.removeItem("user");
-
       window.location.href = "/login";
-    }
-
-    // 🟠 Sin permisos → NO logout
-    if (status === 403) {
-      return Promise.reject(error);
+      return;
     }
 
     return Promise.reject(error);
