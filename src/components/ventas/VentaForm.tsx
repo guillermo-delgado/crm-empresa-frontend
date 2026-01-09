@@ -24,6 +24,9 @@ type FormState = {
   observaciones: string;
 };
 
+
+
+
 type FormField = keyof FormState;
 
 
@@ -94,19 +97,20 @@ export default function VentaForm({
 
   const [usuarios, setUsuarios] = useState<Usuario[]>([]);
 
-  const [form, setForm] = useState<FormState>({
+const [form, setForm] = useState<FormState>({
+  fechaEfecto: "",
+  createdBy: "",
+  aseguradora: "",
+  ramo: "",
+  numeroPoliza: "",
+  tomador: "",
+  primaNeta: "",
+  formaPago: "",
+  actividad: "",
+  observaciones: "",
+});
 
-    fechaEfecto: "",
-    createdBy: "", // ← NUEVO (solo admin)
-    aseguradora: "",
-    ramo: "",
-    numeroPoliza: "",
-    tomador: "",
-    primaNeta: "",
-    formaPago: "",
-    actividad: "",
-    observaciones: "",
-  });
+
 
 const normalizeValue = (field: FormField, value: any) => {
   if (value === undefined || value === null) return "";
@@ -163,7 +167,7 @@ useEffect(() => {
 
   setForm({
     fechaEfecto: toInputDate(initialData.fechaEfecto),
-    createdBy: initialData.usuario || "",
+    createdBy: initialData.createdBy?._id || "",
     aseguradora: initialData.aseguradora || "",
     ramo: initialData.ramo || "",
     numeroPoliza: initialData.numeroPoliza || "",
@@ -174,6 +178,7 @@ useEffect(() => {
     observaciones: initialData.observaciones || "",
   });
 }, [initialData]);
+
 
 
 
@@ -230,33 +235,34 @@ useEffect(() => {
         </Field>
 
         {/* USUARIO (SOLO ADMIN) */}
-        {isAdmin && (
-          <Field label="Usuario">
-            <input
-  list="usuarios-list"
-  name="createdBy"
-  value={form.createdBy}
-  onChange={handleChange}
-  className={`input cursor-pointer ${
-    isChanged("createdBy" as FormField)
-      ? "border-red-500 ring-1 ring-red-400"
-      : ""
-  }`}
-  placeholder="Numma, nombre o email"
-/>
+       {isAdmin && (
+  <Field label="Usuario">
+    <input
+      list="usuarios-list"
+      name="createdBy"
+      value={form.createdBy}
+      onChange={handleChange}
+      className={`input cursor-pointer ${
+        isChanged("createdBy" as FormField)
+          ? "border-red-500 ring-1 ring-red-400"
+          : ""
+      }`}
+      placeholder="Empieza a escribir nombre, email o numma"
+    />
 
-            <datalist id="usuarios-list">
-              {usuarios.map((u) => (
-                <option
-                  key={u._id}
-                  value={u.numma || u.nombre || u.email}
-                >
-                  {u.nombre} ({u.email})
-                </option>
-              ))}
-            </datalist>
-          </Field>
-        )}
+    <datalist id="usuarios-list">
+  {usuarios.map((u) => (
+    <option
+      key={u._id}
+      value={`${u.nombre} (${u.numma || u.email})`}
+      data-id={u._id}
+    />
+  ))}
+</datalist>
+
+  </Field>
+)}
+
 
         <Field label="Aseguradora">
           <select
