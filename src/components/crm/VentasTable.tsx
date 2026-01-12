@@ -1,5 +1,5 @@
 type Venta = {
-    _id: string;
+  _id: string;
   fecha: string;
   poliza: string;
   tomador: string;
@@ -7,18 +7,46 @@ type Venta = {
   ramo: string;
   prima: number;
   usuario: string;
+
+  // 🔔 NUEVO: estado visual de revisión
+  estadoRevision?: "pendiente" | "aceptada" | "rechazada" | null;
 };
 
 type Props = {
   ventas: Venta[];
   onEdit?: (venta: Venta) => void;
   onDelete?: (venta: Venta) => void;
+
+  // 🔑 NUEVOS (opcionales, no rompen nada)
+  isAdmin?: boolean;
+  onClearRevision?: (venta: Venta) => void;
+};
+
+// 🎨 Decide el color de la fila (SIN sockets)
+const getRowClass = (
+  venta: Venta,
+  isAdmin?: boolean
+) => {
+  if (isAdmin) return "";
+
+  switch (venta.estadoRevision) {
+    case "pendiente":
+      return "bg-yellow-50";
+    case "aceptada":
+      return "bg-green-50";
+    case "rechazada":
+      return "bg-red-50";
+    default:
+      return "";
+  }
 };
 
 export default function VentasTable({
   ventas,
   onEdit,
   onDelete,
+  isAdmin,
+  onClearRevision,
 }: Props) {
   return (
     <div className="bg-white border rounded-lg overflow-hidden">
@@ -40,7 +68,20 @@ export default function VentasTable({
           {ventas.map((v, i) => (
             <tr
               key={i}
-              className="border-t hover:bg-slate-50 transition"
+              className={`
+                border-t transition
+                ${getRowClass(v, isAdmin)}
+                ${
+                  !isAdmin && v.estadoRevision
+                    ? "cursor-pointer"
+                    : "hover:bg-slate-50"
+                }
+              `}
+              onClick={() => {
+                if (isAdmin) return;
+                if (!v.estadoRevision) return;
+                onClearRevision?.(v);
+              }}
             >
               <td className="px-4 py-2">{v.fecha}</td>
 
@@ -68,7 +109,10 @@ export default function VentasTable({
                   <button
                     type="button"
                     disabled={!onEdit}
-                    onClick={() => onEdit?.(v)}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onEdit?.(v);
+                    }}
                     className="
                       text-blue-600 text-xs font-medium
                       hover:underline
@@ -83,7 +127,10 @@ export default function VentasTable({
                   <button
                     type="button"
                     disabled={!onDelete}
-                    onClick={() => onDelete?.(v)}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onDelete?.(v);
+                    }}
                     className="
                       text-red-600 text-xs font-medium
                       hover:underline

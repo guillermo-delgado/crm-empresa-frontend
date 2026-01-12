@@ -26,10 +26,16 @@ type VentaAPI = {
   ramo: string;
   primaNeta: number;
   formaPago?: string;
+
   createdBy?: {
     nombre: string;
   };
+
+  // 🔔 Estado de revisión (para colores en la tabla)
+  estadoRevision?: "pendiente" | "aceptada" | "rechazada" | null;
 };
+
+
 
 type VentaEditando = {
   data: VentaAPI;
@@ -149,8 +155,12 @@ const onSolicitudCreada = () => {
 };
 
 const onSolicitudResuelta = () => {
-  if (isAdmin) cargarSolicitudes();
+  if (isAdmin) {
+    cargarSolicitudes();
+    fetchLibroVentas(); 
+  }
 };
+
 
 
   socket.on("VENTA_CREADA", (data) => {
@@ -446,56 +456,77 @@ const onSolicitudResuelta = () => {
   <div className="w-full overflow-x-auto">
     {/* 🔒 Evita que la tabla se aplaste en móvil */}
     <div className="min-w-[1100px]">
-      <VentasTable
-        ventas={ventasFiltradas.map(v => ({
-          _id: v._id,
-          fecha: new Date(v.fechaEfecto).toLocaleDateString(),
-          poliza: v.numeroPoliza,
-          tomador: v.tomador,
-          aseguradora: v.aseguradora,
-          ramo: v.ramo,
-          prima: v.primaNeta,
-          usuario: v.createdBy?.nombre || "-",
-        }))}
-        onEdit={(row) => {
-          const original = ventas.find(v => v._id === row._id);
-          if (!original) return;
+  <VentasTable
+    ventas={ventasFiltradas.map(v => ({
+      _id: v._id,
+      fecha: new Date(v.fechaEfecto).toLocaleDateString(),
+      poliza: v.numeroPoliza,
+      tomador: v.tomador,
+      aseguradora: v.aseguradora,
+      ramo: v.ramo,
+      prima: v.primaNeta,
+      usuario: v.createdBy?.nombre || "-",
 
-          let ventaInicial: any = { ...original };
+      // 🔔 NUEVO: estado visual (si no existe aún, será null)
+      estadoRevision: (v as any).estadoRevision ?? null,
+    }))}
 
-          // 🔁 Reaplicar última edición pendiente del empleado
-          const stored = localStorage.getItem(
-            `venta_pending_${original._id}`
-          );
+    // 🔑 NUEVO: necesario para que admin no vea colores
+    isAdmin={isAdmin}
 
-          if (stored) {
-            try {
-              const payload = JSON.parse(stored);
-              ventaInicial = {
-                ...ventaInicial,
-                ...payload,
-              };
-            } catch {}
-          }
+    // 🔔 NUEVO: limpiar color por fila (SIN sockets)
+    onClearRevision={async (row) => {
+      try {
+        await api.patch(`/ventas/${row._id}/marcar-revision-leida`);
 
-          // 🗓 Normalizar fecha
-          ventaInicial.fechaEfecto = String(
-            ventaInicial.fechaEfecto
-          ).slice(0, 10);
+        // 🔄 Recargar ventas (compatible con sockets solo admin)
+        fetchLibroVentas();
+      } catch (e) {
+        console.error("Error limpiando estado de revisión", e);
+      }
+    }}
 
-          setVentaEditando({
-            data: ventaInicial,    // con cambios
-            original: original,    // 🔑 base real (para "antes:")
-            changedFields: [],     // modo edición normal
-            fromSocket: false,
-          });
-        }}
-        onDelete={(row) => {
-          const original = ventas.find(v => v._id === row._id);
-          if (original) setVentaAEliminar(original);
-        }}
-      />
-    </div>
+    onEdit={(row) => {
+      const original = ventas.find(v => v._id === row._id);
+      if (!original) return;
+
+      let ventaInicial: any = { ...original };
+
+      // 🔁 Reaplicar última edición pendiente del empleado
+      const stored = localStorage.getItem(
+        `venta_pending_${original._id}`
+      );
+
+      if (stored) {
+        try {
+          const payload = JSON.parse(stored);
+          ventaInicial = {
+            ...ventaInicial,
+            ...payload,
+          };
+        } catch {}
+      }
+
+      // 🗓 Normalizar fecha
+      ventaInicial.fechaEfecto = String(
+        ventaInicial.fechaEfecto
+      ).slice(0, 10);
+
+      setVentaEditando({
+        data: ventaInicial,    // con cambios
+        original: original,    // 🔑 base real (para "antes:")
+        changedFields: [],     // modo edición normal
+        fromSocket: false,
+      });
+    }}
+
+    onDelete={(row) => {
+      const original = ventas.find(v => v._id === row._id);
+      if (original) setVentaAEliminar(original);
+    }}
+  />
+</div>
+
   </div>
 )}
 
