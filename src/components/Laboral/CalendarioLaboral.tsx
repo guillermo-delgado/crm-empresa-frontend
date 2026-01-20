@@ -90,11 +90,7 @@ const getDiasDelMes = (year: number, month: number) => {
 
 
 
-const parseHoras = (horas: string) => {
-  const match = horas.match(/(\d+)h\s*(\d+)m/);
-  if (!match) return 0;
-  return Number(match[1]) * 60 + Number(match[2]);
-};
+
 
 const minutosToHoras = (min: number) =>
   `${Math.floor(min / 60)} h ${min % 60} min`;
@@ -124,9 +120,7 @@ const agruparFichajes = (fichajes: Fichaje[]) => {
 };
 
 
-const jornadaCompletada = (minutos?: number) => {
-  return !!minutos && minutos > 0;
-};
+
 
 
 
@@ -189,7 +183,7 @@ export default function CalendarioLaboral() {
         // 👇 SI EL EMPLEADO NO TIENE ESTADO, SE MANTIENE EL GENERAL
         estado: d.estado ?? map[d.fecha]?.estado ?? null,
 
-        turno: d.turno ?? null,
+       turno: d.turno ?? undefined,
         horaEntradaManana: d.horaEntradaManana ?? null,
         horaSalidaManana: d.horaSalidaManana ?? null,
         horaEntradaTarde: d.horaEntradaTarde ?? null,
