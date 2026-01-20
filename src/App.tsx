@@ -1,37 +1,52 @@
-import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
+import {
+  BrowserRouter,
+  Routes,
+  Route,
+  Navigate,
+  useNavigate,
+} from "react-router-dom";
 import { useEffect } from "react";
 
-import LibroVentas from "./pages/LibroVentas";
-import NuevaVenta from "./pages/ventas/NuevaVenta";
-import Login from "./pages/Login";
-import ProtectedRoute from "./components/ProtectedRoute";
+/* ===== CRM ===== */
+import LibroVentas from "./pages/crm/LibroVentas";
+import NuevaVenta from "./pages/crm/NuevaVenta";
 import CrearUsuario from "./pages/admin/CrearUsuario";
+import HorarioCRM from "./pages/crm/horario/HorarioCRM";
+
+/* ===== AUTH ===== */
+import Login from "./pages/auth/Login";
+import ProtectedRoute from "./components/auth/ProtectedRoute";
+
+/* ===== LAYOUTS ===== */
 import Layout from "./components/Layout";
+import LaboralLayout from "./components/Laboral/LaboralLayout";
+
+/* ===== ZONA LABORAL ===== */
+import ControlHorario from "./pages/laboral/ControlHorario";
+import HistorialHorario from "./components/Laboral/HistorialHorario";
+import CalendarioLaboral from "./components/Laboral/CalendarioLaboral";
 
 /* 🔔 SOCKET */
 import { getSocket } from "./services/socket";
 
-export default function App() {
+/* ======================================================
+   🔔 SOCKET + NAVEGACIÓN
+====================================================== */
+function AppInner() {
+  const navigate = useNavigate();
+
   useEffect(() => {
     const socket = getSocket();
 
-    console.log("🧪 [PROVISIONAL] Intentando conectar socket...");
-
     socket.on("connect", () => {
-      console.log("🟢 [PROVISIONAL] SOCKET CONECTADO:", socket.id);
+      console.log("🟢 SOCKET CONECTADO:", socket.id);
     });
 
     socket.on("connect_error", (err) => {
-      console.error("🔴 [PROVISIONAL] SOCKET ERROR:", err.message);
-    });
-
-    socket.on("test_event", (msg) => {
-      console.log("🔥 [PROVISIONAL] TEST EVENT RECIBIDO:", msg);
+      console.error("🔴 SOCKET ERROR:", err.message);
     });
 
     socket.on("SOLICITUD_RESUELTA", (data: any) => {
-      console.log("🧹 Solicitud resuelta:", data);
-
       if (data?.ventaId) {
         localStorage.removeItem(`venta_pending_${data.ventaId}`);
         return;
@@ -44,59 +59,120 @@ export default function App() {
       });
     });
 
+    socket.on("FORCE_LOGOUT", () => {
+      localStorage.setItem("jornada_cerrada", "1");
+      navigate("/laboral/control-horario", { replace: true });
+    });
+
     return () => {
       socket.off("connect");
       socket.off("connect_error");
-      socket.off("test_event");
       socket.off("SOLICITUD_RESUELTA");
+      socket.off("FORCE_LOGOUT");
     };
-  }, []);
+  }, [navigate]);
 
   return (
+    <Routes>
+      {/* ================= LOGIN ================= */}
+      <Route path="/login" element={<Login />} />
+
+      {/* ================= ZONA LABORAL ================= */}
+      <Route
+        path="/laboral/control-horario"
+        element={
+          <ProtectedRoute>
+            <LaboralLayout>
+              <ControlHorario />
+            </LaboralLayout>
+          </ProtectedRoute>
+        }
+      />
+
+      <Route
+        path="/laboral/historial"
+        element={
+          <ProtectedRoute>
+            <LaboralLayout>
+              <HistorialHorario />
+            </LaboralLayout>
+          </ProtectedRoute>
+        }
+      />
+
+      <Route
+        path="/laboral/calendario"
+        element={
+          <ProtectedRoute>
+            <LaboralLayout>
+              <CalendarioLaboral />
+            </LaboralLayout>
+          </ProtectedRoute>
+        }
+      />
+
+      {/* ================= CRM ================= */}
+      <Route
+        path="/crm/libro-ventas"
+        element={
+          <ProtectedRoute>
+            <Layout>
+              <LibroVentas />
+            </Layout>
+          </ProtectedRoute>
+        }
+      />
+
+      <Route
+        path="/crm/nueva-venta"
+        element={
+          <ProtectedRoute>
+            <Layout>
+              <NuevaVenta />
+            </Layout>
+          </ProtectedRoute>
+        }
+      />
+      <Route
+  path="/crm/horario"
+  element={
+    <ProtectedRoute adminOnly>
+      <Layout>
+        <HorarioCRM />
+      </Layout>
+    </ProtectedRoute>
+  }
+/>
+
+
+      {/* ================= ADMIN ================= */}
+      <Route
+        path="/crm/usuarios"
+        element={
+          <ProtectedRoute adminOnly>
+            <Layout>
+              <CrearUsuario />
+            </Layout>
+          </ProtectedRoute>
+        }
+      />
+
+      {/* ================= DEFAULT ================= */}
+      <Route
+        path="*"
+        element={<Navigate to="/laboral/control-horario" replace />}
+      />
+    </Routes>
+  );
+}
+
+/* ======================================================
+   🌍 APP ROOT
+====================================================== */
+export default function App() {
+  return (
     <BrowserRouter>
-  <Routes>
-    {/* LOGIN */}
-    <Route path="/login" element={<Login />} />
-
-    {/* ===== RUTAS CRM (ADMIN + EMPLEADOS) ===== */}
-    <Route
-      path="/crm/libro-ventas"
-      element={
-        <ProtectedRoute>
-          <Layout>
-            <LibroVentas />
-          </Layout>
-        </ProtectedRoute>
-      }
-    />
-
-    <Route
-      path="/crm/nueva-venta"
-      element={
-        <ProtectedRoute>
-          <Layout>
-            <NuevaVenta />
-          </Layout>
-        </ProtectedRoute>
-      }
-    />
-
-    {/* ===== SOLO ADMIN ===== */}
-    <Route
-      path="/crm/usuarios"
-      element={
-        <ProtectedRoute adminOnly>
-          <Layout>
-            <CrearUsuario />
-          </Layout>
-        </ProtectedRoute>
-      }
-    />
-
-    {/* DEFAULT */}
-    <Route path="*" element={<Navigate to="/crm/libro-ventas" />} />
-  </Routes>
-</BrowserRouter>
-
+      <AppInner />
+    </BrowserRouter>
   );
 }

@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import api from "../../services/api";
 import VentaForm from "./VentaForm";
-import InfoModal from "./InfoModal";
+import InfoModal from "../common/InfoModal";
 
 type Props = {
   venta: any;

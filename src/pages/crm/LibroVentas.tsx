@@ -1,17 +1,17 @@
 import { useEffect, useMemo, useState } from "react";
-import KPICard from "../components/crm/KPICard";
-import VentasTable from "../components/crm/VentasTable";
-import InfoModal from "../components/ventas/InfoModal";
-import EditVentaModal from "../components/ventas/EditVentaModal";
-import ConfirmModal from "../components/ventas/ConfirmModal";
-import api from "../services/api";
+import KPICard from "../../components/crm/KPICard";
+import VentasTable from "../../components/crm/VentasTable";
+import InfoModal from "../../components/common/InfoModal";
+import EditVentaModal from "../../components/ventas/EditVentaModal";
+import ConfirmModal from "../../components/common/ConfirmModal";
+import api from "../../services/api";
 import { useNavigate } from "react-router-dom";
 
 
 
 
 /* 🔔 SOCKET */
-import { getSocket } from "../services/socket";
+import { getSocket } from "../../services/socket";
 
 import * as XLSX from "xlsx";
 import jsPDF from "jspdf";

@@ -1,30 +1,50 @@
-import { NavLink } from "react-router-dom";
-import { useState } from "react";
+import { NavLink, useNavigate } from "react-router-dom";
 import {
   ChevronLeft,
   ChevronRight,
   LayoutDashboard,
   PlusCircle,
   Users,
+  CalendarDays,
+  LogOut,
 } from "lucide-react";
+import api from "../services/api";
 
-export default function Sidebar() {
-  // 🔒 Siempre colapsado por defecto
-  const [collapsed, setCollapsed] = useState(true);
+type SidebarProps = {
+  collapsed: boolean;
+  setCollapsed: (value: boolean) => void;
+  mobile?: boolean;
+};
 
-  // 👤 Usuario actual
+export default function Sidebar({
+  collapsed,
+  setCollapsed,
+  mobile = false,
+}: SidebarProps) {
+  const navigate = useNavigate();
+
   const user = JSON.parse(localStorage.getItem("user") || "{}");
   const isAdmin = user?.role === "admin";
+
+  const handleLogout = async () => {
+    try {
+      await api.post("/auth/logout");
+    } finally {
+      localStorage.removeItem("token");
+      localStorage.removeItem("user");
+      navigate("/login");
+    }
+  };
 
   return (
     <aside
       className={`
-        hidden md:flex
+        ${mobile ? "flex" : "hidden md:flex"}
         ${collapsed ? "w-16" : "w-64"}
         bg-slate-900 text-white
         flex-col
         transition-all duration-300
-        shrink-0
+        fixed left-0 top-0 h-screen z-50
       `}
     >
       {/* HEADER */}
@@ -35,72 +55,88 @@ export default function Sidebar() {
           </span>
         )}
 
-        <button
-          type="button"
-          onClick={() => setCollapsed((v) => !v)}
-          className="text-slate-300 hover:text-white"
-          aria-label="Toggle sidebar"
-        >
-          {collapsed ? <ChevronRight size={18} /> : <ChevronLeft size={18} />}
-        </button>
+        {!mobile && (
+          <button
+            onClick={() => setCollapsed(!collapsed)}
+            className="text-slate-300 hover:text-white"
+          >
+            {collapsed ? <ChevronRight size={18} /> : <ChevronLeft size={18} />}
+          </button>
+        )}
       </div>
 
       {/* MENÚ */}
       <nav className="flex-1 px-2 py-4 space-y-1">
-        {/* 📘 Libro de ventas (admin + empleado) */}
         <NavLink
           to="/crm/libro-ventas"
           className={({ isActive }) =>
-            `flex items-center gap-3 px-3 py-2 rounded-md transition-colors ${
+            `flex items-center gap-3 px-3 py-2 rounded-md ${
               isActive
                 ? "bg-slate-700 text-white"
-                : "text-slate-300 hover:bg-slate-800 hover:text-white"
+                : "text-slate-300 hover:bg-slate-800"
             }`
           }
         >
           <LayoutDashboard size={20} />
-          {!collapsed && <span className="text-sm">Libro de ventas</span>}
+          {!collapsed && <span>Libro de ventas</span>}
         </NavLink>
 
-        {/* ➕ Nueva venta (admin + empleado) */}
         <NavLink
           to="/crm/nueva-venta"
           className={({ isActive }) =>
-            `flex items-center gap-3 px-3 py-2 rounded-md transition-colors ${
+            `flex items-center gap-3 px-3 py-2 rounded-md ${
               isActive
                 ? "bg-slate-700 text-white"
-                : "text-slate-300 hover:bg-slate-800 hover:text-white"
+                : "text-slate-300 hover:bg-slate-800"
             }`
           }
         >
           <PlusCircle size={20} />
-          {!collapsed && <span className="text-sm">Nueva venta</span>}
+          {!collapsed && <span>Nueva venta</span>}
         </NavLink>
 
-        {/* 👥 Usuarios (SOLO admin) */}
+        {/* 🔥 GESTIÓN EMPLEADOS */}
+        {isAdmin && (
+          <NavLink
+            to="/crm/horario"
+            className={({ isActive }) =>
+              `flex items-center gap-3 px-3 py-2 rounded-md ${
+                isActive
+                  ? "bg-slate-700 text-white"
+                  : "text-slate-300 hover:bg-slate-800"
+              }`
+            }
+          >
+            <CalendarDays size={20} />
+            {!collapsed && <span>G. Empleados</span>}
+          </NavLink>
+        )}
+
         {isAdmin && (
           <NavLink
             to="/crm/usuarios"
             className={({ isActive }) =>
-              `flex items-center gap-3 px-3 py-2 rounded-md transition-colors ${
+              `flex items-center gap-3 px-3 py-2 rounded-md ${
                 isActive
                   ? "bg-slate-700 text-white"
-                  : "text-slate-300 hover:bg-slate-800 hover:text-white"
+                  : "text-slate-300 hover:bg-slate-800"
               }`
             }
           >
             <Users size={20} />
-            {!collapsed && <span className="text-sm">Usuarios</span>}
+            {!collapsed && <span>Usuarios</span>}
           </NavLink>
         )}
       </nav>
 
-      {/* FOOTER SOLO ADMIN */}
-      {isAdmin && !collapsed && (
-        <div className="px-4 py-3 text-xs text-slate-400 border-t border-slate-700">
-          Panel administrador
-        </div>
-      )}
+      {/* LOGOUT */}
+      <button
+        onClick={handleLogout}
+        className="flex items-center gap-3 px-4 py-3 text-slate-300 hover:bg-slate-800"
+      >
+        <LogOut size={20} />
+        {!collapsed && <span>Cerrar sesión</span>}
+      </button>
     </aside>
   );
 }

@@ -1,11 +1,12 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
-import api from "../services/api";
+import api from "../../services/api";
+import { resetSocket, getSocket } from "../../services/socket";
 
 const Login = () => {
   const navigate = useNavigate();
 
-  const [login, setLogin] = useState(""); // email o numma
+  const [login, setLogin] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
 
@@ -15,22 +16,30 @@ const Login = () => {
 
     try {
       const response = await api.post("/auth/login", {
-        login: login.toLowerCase().trim(), // 🔑 NORMALIZADO
+        login: login.toLowerCase().trim(),
         password,
       });
 
-      // Guardamos sesión
+      // 🔐 Guardar sesión
       localStorage.setItem("token", response.data.token);
-      localStorage.setItem("user", JSON.stringify(response.data.user));
+      localStorage.setItem(
+        "user",
+        JSON.stringify(response.data.user)
+      );
 
-      // Redirigimos correctamente
+      // 🔥 MUY IMPORTANTE: recrear socket con userId
+      resetSocket();
+      getSocket();
+
+      // ➡️ Redirección normal
       navigate("/crm/libro-ventas", { replace: true });
     } catch (err: any) {
       localStorage.removeItem("token");
       localStorage.removeItem("user");
 
       setError(
-        err.response?.data?.message || "Error al iniciar sesión"
+        err.response?.data?.message ||
+          "Error al iniciar sesión"
       );
     }
   };
