@@ -1,4 +1,6 @@
+# =========================
 # Logs
+# =========================
 logs
 *.log
 npm-debug.log*
@@ -6,25 +8,49 @@ yarn-debug.log*
 yarn-error.log*
 pnpm-debug.log*
 lerna-debug.log*
-lerna-debug.log*
 
+# =========================
+# Node / Frontend
+# =========================
 node_modules
 dist
 dist-ssr
+.vite/
 *.local
 
+# =========================
+# Environment variables
+# =========================
+.env
+.env.*
+!.env.example
+
+# =========================
+# Android / Gradle (TWA)
+# =========================
+.gradle/
+build/
+app/build/
+*.apk
+*.aab
+*.idsig
+local.properties
+
+# =========================
+# Android Studio / IDEs
+# =========================
+.idea/
+*.iml
+
+# =========================
 # Editor directories and files
+# =========================
 .vscode/*
 !.vscode/extensions.json
-.idea
 .DS_Store
+Thumbs.db
 *.suo
 *.ntvs*
 *.njsproj
 *.sln
 *.sw?
-
-# Environment variables
-.env
-.env.*
-!.env.example
