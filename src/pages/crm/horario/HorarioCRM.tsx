@@ -72,10 +72,7 @@ const [modoModal, setModoModal] = useState<"ACCIONES" | "JORNADAS" | null>(null)
 
 
 
-/* CONFIGURACIÓN EMPLEADO (CONTROLADOS) */
-const [fichajesDia, setFichajesDia] = useState<
-  { tipo: "ENTRADA" | "SALIDA"; hora: string }[]
->([]);
+
 
 // const [minutosDia, setMinutosDia] = useState<number>(0);
 
@@ -1119,7 +1116,7 @@ const cambiarMes = (delta: number) => {
   if (jornadaTarde.salida)
     nuevos.push({ tipo: "SALIDA", hora: jornadaTarde.salida });
 
-  setFichajesDia(nuevos);
+  
 
   await api.post("/crm/fichajes", {
     empleadoId,
