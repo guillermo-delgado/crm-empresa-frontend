@@ -186,15 +186,11 @@ const onVentaEliminada = ({ ventaId }: any) => {
 
 
 const onSolicitudCreada = ({ ventaId }: any) => {
-  if (!ventaId) return;
+ if (!ventaId) return;
+  setRevisionCount(prev => prev + 1);
 
-  // ✅ SOLO ADMIN incrementa badge
-  if (isAdmin) {
-    setRevisionCount(prev => prev + 1);
-    cargarSolicitudes();
-  }
 
-  // 🔵 pintar fila
+  // 🔵 Pintar fila azul pastel INMEDIATO
   setVentas(prev =>
     prev.map(v =>
       v._id === ventaId
@@ -202,8 +198,10 @@ const onSolicitudCreada = ({ ventaId }: any) => {
         : v
     )
   );
-};
 
+  // 🔔 actualizar contador / listado
+  if (isAdmin) cargarSolicitudes();
+};
 
 
 const onSolicitudResuelta = ({ ventaId, estado }: any) => {
