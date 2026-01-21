@@ -949,7 +949,7 @@ function PeriodoSelector({
   minPeriodo,
   maxPeriodo,
 }: any) {
-  const actual = new Date(anio, mes - 1, 1);
+  // const actual = new Date(anio, mes - 1, 1);
 
   const isAdmin =
     JSON.parse(localStorage.getItem("user") || "{}")?.role === "admin";
