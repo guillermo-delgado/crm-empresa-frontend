@@ -2,6 +2,8 @@ import { useEffect, useRef, useState } from "react";
 import api from "../../services/api";
 import { useNavigate } from "react-router-dom";
 
+
+
 const ramosDisponibles = [
   "Autos",
   "Hogar",
@@ -11,7 +13,7 @@ const ramosDisponibles = [
   "Decesos Prima Periodica",
   "Decesos Prima única",
   "Empresa sin multirriesgo",
-  "Empresas (074 o 078)",
+  "Multirriesgo (074 o 078)",
   "Comunidades",
   "Patinetes",
   "Viajes",
@@ -47,8 +49,11 @@ const NuevaVenta = () => {
     createdBy: "", // ← NUEVO (solo admin)
   });
 
+
+  
  // const [success, setSuccess] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [showSuccess, setShowSuccess] = useState(false);
 
   /* =========================
      CARGAR USUARIOS (solo admin)
@@ -86,18 +91,8 @@ const NuevaVenta = () => {
 
      // setSuccess(true);
 
-      setForm({
-        fechaEfecto: "",
-        aseguradora: "",
-        ramo: "",
-        numeroPoliza: "",
-        tomador: "",
-        primaNeta: "",
-        formaPago: "",
-        actividad: "",
-        observaciones: "",
-        createdBy: "",
-      });
+     setShowSuccess(true);
+
     } catch (err: any) {
       setError(
         err.response?.data?.message ||
@@ -244,36 +239,58 @@ const NuevaVenta = () => {
               >
                 <option value="">Selecciona forma de pago</option>
                 <option value="Anual">Anual</option>
-                <option value="Mensual">Mensual</option>
+<option value="Semestral">Semestral</option>
+<option value="Trimestral">Trimestral</option>
+<option value="Mensual">Mensual</option>
+
               </select>
             </Field>
 
-            <Field label="Actividad">
-              <select
-                name="actividad"
-                value={form.actividad}
-                onChange={handleChange}
-                className="input cursor-pointer"
-                required
-              >
-                <option value="">Selecciona actividad</option>
-                <option value="SGC">SGC</option>
-                <option value="OFICINA">OFICINA</option>
-                <option value="TELEFONICO">TELEFONICO</option>
-                <option value="INTERNET">INTERNET</option>
-                <option value="RED PERSONAL">RED PERSONAL</option>
-              </select>
-            </Field>
+           <Field label="Actividad">
+  <select
+    name="actividad"
+    value={form.actividad}
+    onChange={handleChange}
+    className="input cursor-pointer"
+    required
+  >
+    <option value="">Selecciona actividad</option>
 
-            <Field label="Observaciones">
-              <textarea
-                name="observaciones"
-                value={form.observaciones}
-                onChange={handleChange}
-                rows={3}
-                className="input resize-none"
-              />
-            </Field>
+    {/* Para todos los usuarios */}
+    <option value="RECOMENDADO">RECOMENDADO</option>
+    <option value="SGC">SGC</option>
+    <option value="OFICINA">OFICINA</option>
+    <option value="TELEFONICO">TELEFONICO</option>
+    <option value="INTERNET">INTERNET</option>
+    <option value="RED PERSONAL">RED PERSONAL</option>
+
+    {/* Solo Admin */}
+    {isAdmin && (
+      <>
+        <option value="FINCAS">ADMINISTRADOR DE FINCAS</option>
+        <option value="COLABORADORES">COLABORADORES</option>
+      </>
+    )}
+  </select>
+</Field>
+
+
+           <Field label="Observaciones">
+  <textarea
+    name="observaciones"
+    value={form.observaciones}
+    onChange={(e) => {
+      setForm({ ...form, observaciones: e.target.value });
+
+      // auto resize
+      e.target.style.height = "auto";
+      e.target.style.height = e.target.scrollHeight + "px";
+    }}
+    rows={3}
+    className="input w-full resize-none overflow-hidden"
+  />
+</Field>
+
 
           </div>
 
@@ -288,16 +305,46 @@ const NuevaVenta = () => {
           <div className="sticky bottom-0 bg-slate-50 px-6 py-4 border-t border-slate-300 flex justify-end">
 
             <button
-              type="submit"
-              className="px-10 py-3 text-lg rounded-md bg-slate-800 text-white font-semibold cursor-pointer"
-            >
-              Guardar venta
-            </button>
+  type="submit"
+  disabled={showSuccess}
+  className="px-10 py-3 text-lg rounded-md bg-slate-800 text-white font-semibold cursor-pointer disabled:opacity-50"
+>
+  Guardar venta
+</button>
+
           </div>
         </form>
       </div>
+      {showSuccess && (
+  <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50">
+    <div className="bg-white rounded-lg p-6 w-full max-w-md shadow-lg">
+      <h2 className="text-lg font-semibold text-slate-800 mb-2">
+        Venta guardada correctamente
+      </h2>
+
+      <p className="text-slate-600">
+        La venta se ha registrado en el libro de ventas.
+      </p>
+
+      <div className="flex justify-end mt-6">
+        <button
+          onClick={() => {
+            setShowSuccess(false);
+            navigate("/crm/libro-ventas");
+          }}
+          className="px-6 py-2 bg-slate-800 text-white rounded-md font-semibold"
+        >
+          OK
+        </button>
+      </div>
+    </div>
+  </div>
+)}
+
     </div>
   );
+
+  
 };
 
 /* CAMPO AUX */

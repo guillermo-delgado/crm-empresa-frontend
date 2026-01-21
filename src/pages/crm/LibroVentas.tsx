@@ -5,7 +5,11 @@ import InfoModal from "../../components/common/InfoModal";
 import EditVentaModal from "../../components/ventas/EditVentaModal";
 import ConfirmModal from "../../components/common/ConfirmModal";
 import api from "../../services/api";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useOutletContext } from "react-router-dom";
+import { ChevronLeft, ChevronRight } from "lucide-react";
+
+
+
 
 
 
@@ -50,8 +54,14 @@ type VentaAEliminar = VentaAPI & {
 };
 
 
+type LayoutContext = {
+  setRevisionCount: React.Dispatch<React.SetStateAction<number>>;
+};
 
 export default function LibroVentas() {
+  const { setRevisionCount } = useOutletContext<LayoutContext>();
+console.log("OK setRevisionCount:", setRevisionCount);
+
   const navigate = useNavigate();
 
    /* =========================
@@ -112,10 +122,16 @@ const [ventaAEliminar, setVentaAEliminar] = useState<VentaAEliminar | null>(null
 const cargarSolicitudes = async () => {
   try {
     const res = await api.get("/solicitudes");
+    const total = res.data?.length || 0;
+
     setSolicitudes(res.data || []);
-    setSolicitudesPendientes(res.data.length);
+    setSolicitudesPendientes(total);
+
+    // 🔔 CLAVE: sincronizar badge global
+    setRevisionCount(total);
   } catch {}
 };
+
 
   const fetchLibroVentas = async () => {
     setLoading(true);
@@ -146,20 +162,87 @@ useEffect(() => {
   const socket = getSocket();
   if (!socket) return;
 
-  const onVenta = () => {
-    fetchLibroVentas();
-  };
+const onVentaActualizada = (venta: any) => {
+  if (!venta?._id) return;
 
-const onSolicitudCreada = () => {
-  if (isAdmin) cargarSolicitudes();
+  setVentas(prev =>
+    prev.map(v =>
+      v._id === venta._id ? { ...v, ...venta } : v
+    )
+  );
 };
 
-const onSolicitudResuelta = () => {
+const onVentaEliminada = ({ ventaId }: any) => {
+  if (!ventaId) return;
+
+  setVentas(prev =>
+    prev.filter(v => v._id !== ventaId)
+  );
+};
+
+
+
+
+
+
+const onSolicitudCreada = ({ ventaId }: any) => {
+  if (!ventaId) return;
+
+  // ✅ SOLO ADMIN incrementa badge
   if (isAdmin) {
+    setRevisionCount(prev => prev + 1);
     cargarSolicitudes();
-    fetchLibroVentas(); 
   }
+
+  // 🔵 pintar fila
+  setVentas(prev =>
+    prev.map(v =>
+      v._id === ventaId
+        ? { ...v, estadoRevision: "pendiente" }
+        : v
+    )
+  );
 };
+
+
+
+const onSolicitudResuelta = ({ ventaId, estado }: any) => {
+  if (!ventaId || !estado) return;
+// 👤 EMPLEADO: feedback visual inmediato
+if (!isAdmin) {
+  setVentas(prev =>
+    prev.map(v =>
+      v._id === ventaId
+        ? { ...v, estadoRevision: estado }
+        : v
+    )
+  );
+}
+
+  
+
+
+  // 2️⃣ Traer venta actualizada
+  api.get(`/ventas/${ventaId}`).then(res => {
+    setVentas(prev =>
+      prev.map(v =>
+        v._id === ventaId ? res.data : v
+      )
+    );
+  });
+
+  // ✅ 3️⃣ SOLO ADMIN baja el badge
+if (isAdmin) cargarSolicitudes();
+if (isAdmin) {
+  setRevisionCount(prev => Math.max(0, prev - 1));
+}
+
+
+
+};
+
+
+
 
 
 
@@ -167,8 +250,9 @@ const onSolicitudResuelta = () => {
   console.log("🟣 EVENTO VENTA_CREADA RECIBIDO:", data);
 });
 
-  socket.on("VENTA_ACTUALIZADA", onVenta);
-  socket.on("VENTA_ELIMINADA", onVenta);
+  socket.on("VENTA_ACTUALIZADA", onVentaActualizada);
+socket.on("VENTA_ELIMINADA", onVentaEliminada);
+
   socket.on("SOLICITUD_CREADA", onSolicitudCreada);
   socket.on("SOLICITUD_RESUELTA", onSolicitudResuelta);
 
@@ -176,13 +260,15 @@ const onSolicitudResuelta = () => {
 
 
   return () => {
-    socket.off("VENTA_CREADA", onVenta);
-    socket.off("VENTA_ACTUALIZADA", onVenta);
-    socket.off("VENTA_ELIMINADA", onVenta);
-    socket.off("SOLICITUD_CREADA", onSolicitudCreada);
-    socket.off("SOLICITUD_RESUELTA", onSolicitudResuelta);
+    socket.off("VENTA_CREADA");
+socket.off("VENTA_ACTUALIZADA", onVentaActualizada);
+socket.off("VENTA_ELIMINADA", onVentaEliminada);
+socket.off("SOLICITUD_CREADA", onSolicitudCreada);
+socket.off("SOLICITUD_RESUELTA", onSolicitudResuelta);
+
   };
-}, [isAdmin, mes, anio]);
+  }, [isAdmin]);
+// }, [isAdmin, mes, anio]);
 
 
 
@@ -321,134 +407,87 @@ const onSolicitudResuelta = () => {
       {/* KPIs */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         <KPICard title="Producción total" value={`${produccionTotal.toFixed(2)} €`} />
-        <KPICard title="Periodo" value={`${mesNombre(mes)} ${anio}`} />
+        <PeriodoSelector
+  mes={mes}
+  anio={anio}
+  setMes={setMes}
+  setAnio={setAnio}
+  minPeriodo={minPeriodo}
+  maxPeriodo={maxPeriodo}
+/>
+
 
         <div className="bg-white border rounded-lg p-4">
           <h4 className="text-xs font-semibold text-slate-500 mb-2">
             Producción por ramo
           </h4>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2 text-xs">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+
             {Object.entries(produccionPorRamo).map(([r, total]) => (
-              <div key={r} className="border rounded px-2 py-1 flex justify-between">
-                <span className="font-medium">{r}</span>
-                <span>{total.toFixed(2)} €</span>
-              </div>
-            ))}
+  <div
+    key={r}
+    className="border border-slate-200 rounded-md px-3 py-2"
+  >
+    <p className="text-xs text-slate-500 truncate">
+      {r}
+    </p>
+    <p className="text-sm font-semibold text-slate-800 mt-1">
+      {total.toFixed(2)} €
+    </p>
+  </div>
+))}
+
           </div>
         </div>
       </div>
 
       {/* FILTROS */}
-<div className="bg-white border rounded-lg p-4 flex gap-6 flex-wrap items-end">
+{/* FILTROS (solo admin) */}
+{isAdmin && (
+  <div className="bg-white border rounded-lg p-4 flex gap-6 flex-wrap items-end">
 
-  {/* 👑 ADMIN: filtros completos */}
-  {isAdmin && (
+    {/* 👑 ADMIN: filtros completos */}
     <>
-  <FiltroMes
-    mes={mes}
-    anio={anio}
-    setMes={setMes}
-    setAnio={setAnio}
-    minPeriodo={minPeriodo}
-    maxPeriodo={maxPeriodo}
-  />
+      <FiltroMes
+        mes={mes}
+        anio={anio}
+        setMes={setMes}
+        setAnio={setAnio}
+        minPeriodo={minPeriodo}
+        maxPeriodo={maxPeriodo}
+      />
 
-  <FiltroAnio
-    anio={anio}
-    setAnio={setAnio}
-  />
+      <FiltroAnio
+        anio={anio}
+        setAnio={setAnio}
+      />
 
-  <Select
-    label="Aseguradora"
-    value={aseguradora}
-    setValue={setAseguradora}
-    options={aseguradoras}
-  />
+      <Select
+        label="Aseguradora"
+        value={aseguradora}
+        setValue={setAseguradora}
+        options={aseguradoras}
+      />
 
-  <Select
-    label="Ramo"
-    value={ramo}
-    setValue={setRamo}
-    options={ramos}
-  />
+      <Select
+        label="Ramo"
+        value={ramo}
+        setValue={setRamo}
+        options={ramos}
+      />
 
-  <Select
-    label="Usuario"
-    value={usuario}
-    setValue={setUsuario}
-    options={usuarios}
-  />
-</>
-
-  )}
-
- 
-{/* 👤 EMPLEADOS: selector de periodo simple y centrado */}
-{!isAdmin && (
-  <div className="w-full flex justify-center">
-  <div className="flex items-center gap-6">
-
-    {/* ◀ RETROCEDER */}
-    <button
-      onClick={() => {
-        const anterior = new Date(anio, mes - 2, 1);
-
-        if (anterior >= minPeriodo) {
-          setMes(anterior.getMonth() + 1);
-          setAnio(anterior.getFullYear());
-        }
-      }}
-      disabled={
-        new Date(anio, mes - 1, 1).getTime() === minPeriodo.getTime()
-      }
-      className={`text-xl font-medium transition
-        ${
-          new Date(anio, mes - 1, 1).getTime() === minPeriodo.getTime()
-            ? "opacity-30 cursor-not-allowed"
-            : "hover:text-slate-800"
-        }`}
-      aria-label="Mes anterior"
-    >
-      ◀
-    </button>
-
-    {/* PERIODO */}
-    <span className="text-sm font-semibold text-slate-700 min-w-[140px] text-center select-none">
-      {mesNombre(mes)} {anio}
-    </span>
-
-    {/* ▶ AVANZAR */}
-    <button
-      onClick={() => {
-        const siguiente = new Date(anio, mes, 1);
-
-        if (siguiente <= maxPeriodo) {
-          setMes(siguiente.getMonth() + 1);
-          setAnio(siguiente.getFullYear());
-        }
-      }}
-      disabled={
-        new Date(anio, mes - 1, 1).getTime() === maxPeriodo.getTime()
-      }
-      className={`text-xl font-medium transition
-        ${
-          new Date(anio, mes - 1, 1).getTime() === maxPeriodo.getTime()
-            ? "opacity-30 cursor-not-allowed"
-            : "hover:text-slate-800"
-        }`}
-      aria-label="Mes siguiente"
-    >
-      ▶
-    </button>
+      <Select
+        label="Usuario"
+        value={usuario}
+        setValue={setUsuario}
+        options={usuarios}
+      />
+    </>
 
   </div>
-</div>
-
 )}
 
-
-</div>
 
 
       {/* TABLA */}
@@ -477,48 +516,66 @@ const onSolicitudResuelta = () => {
     // 🔔 NUEVO: limpiar color por fila (SIN sockets)
     onClearRevision={async (row) => {
       try {
-        await api.patch(`/ventas/${row._id}/marcar-revision-leida`);
+       await api.patch(`/ventas/${row._id}/marcar-revision-leida`);
 
-        // 🔄 Recargar ventas (compatible con sockets solo admin)
-        fetchLibroVentas();
+setVentas(prev =>
+  prev.map(v =>
+    v._id === row._id ? { ...v, estadoRevision: null } : v
+  )
+);
+setRevisionCount(prev => Math.max(0, prev - 1));
+
+
       } catch (e) {
         console.error("Error limpiando estado de revisión", e);
       }
     }}
 
-    onEdit={(row) => {
-      const original = ventas.find(v => v._id === row._id);
-      if (!original) return;
+   onEdit={async (row) => {
+  const originalVenta = ventas.find(v => v._id === row._id);
+if (!originalVenta) return;
 
-      let ventaInicial: any = { ...original };
+// ✅ COPIA PROFUNDA — original JAMÁS se modifica
+const original = JSON.parse(JSON.stringify(originalVenta));
 
-      // 🔁 Reaplicar última edición pendiente del empleado
-      const stored = localStorage.getItem(
-        `venta_pending_${original._id}`
+let ventaInicial: any = JSON.parse(JSON.stringify(original));
+let changedFields: string[] = [];
+
+
+  // 🟡 SI ES EMPLEADO Y ESTÁ PENDIENTE → cargar solicitud
+  if (!isAdmin && original.estadoRevision === "pendiente") {
+    try {
+      const res = await api.get(
+        `/ventas/${original._id}/solicitud-pendiente`
       );
 
-      if (stored) {
-        try {
-          const payload = JSON.parse(stored);
-          ventaInicial = {
-            ...ventaInicial,
-            ...payload,
-          };
-        } catch {}
+      const solicitud = res.data;
+      if (solicitud?.payload) {
+        ventaInicial = {
+          ...ventaInicial,
+          ...solicitud.payload,
+        };
+
+        changedFields = Object.keys(solicitud.payload);
       }
+    } catch {
+      // si falla, cae al comportamiento normal
+    }
+  }
 
-      // 🗓 Normalizar fecha
-      ventaInicial.fechaEfecto = String(
-        ventaInicial.fechaEfecto
-      ).slice(0, 10);
+  // 🗓 Normalizar fecha
+  ventaInicial.fechaEfecto = String(
+    ventaInicial.fechaEfecto
+  ).slice(0, 10);
 
-      setVentaEditando({
-        data: ventaInicial,    // con cambios
-        original: original,    // 🔑 base real (para "antes:")
-        changedFields: [],     // modo edición normal
-        fromSocket: false,
-      });
-    }}
+  setVentaEditando({
+    data: ventaInicial,     // 🔥 DATOS EDITADOS
+    original: original,     // base real
+    changedFields,          // 🔥 para "Antes:"
+    fromSocket: false,
+  });
+}}
+
 
     onDelete={(row) => {
       const original = ventas.find(v => v._id === row._id);
@@ -574,11 +631,12 @@ const onSolicitudResuelta = () => {
 >
   Ver solicitudes pendientes
 
-  {solicitudesPendientes > 0 && (
-    <span className="absolute -top-2 -right-2 bg-red-600 text-white text-xs font-bold rounded-full px-2 py-0.5">
-      {solicitudesPendientes}
-    </span>
-  )}
+  {solicitudes.length > 0 && (
+  <span className="absolute -top-2 -right-2 bg-red-600 text-white text-xs font-bold rounded-full px-2 py-0.5">
+    {solicitudes.length}
+  </span>
+)}
+
 </button>
 
   
@@ -643,16 +701,31 @@ const onSolicitudResuelta = () => {
       "observaciones",
     ];
 
-    const changedFields = CAMPOS_FORMULARIO.filter((field) => {
-      const o = original[field];
-      const r = ventaRevision[field];
+    const normalize = (v: any) => {
+  if (v === null || v === undefined) return "";
+  return String(v)
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, " ");
+};
+;
 
-      if (field === "fechaEfecto") {
-        return String(o).slice(0, 10) !== String(r).slice(0, 10);
-      }
+const normalizeFecha = (v: any) => {
+  if (!v) return "";
+  return String(v).slice(0, 10);
+};
 
-      return String(o ?? "") !== String(r ?? "");
-    });
+const changedFields = CAMPOS_FORMULARIO.filter((field) => {
+  const o = original[field];
+  const r = ventaRevision[field];
+
+  if (field === "fechaEfecto") {
+    return normalizeFecha(o) !== normalizeFecha(r);
+  }
+
+  return normalize(o) !== normalize(r);
+});
+
 
     // 4️⃣ 🔥 ABRIR MODAL DE EDICIÓN
     setVentaEditando({
@@ -731,14 +804,35 @@ if (s.tipo === "ELIMINAR_VENTA") {
 
       {/* MODALES */}
       {ventaEditando && (
-        <EditVentaModal
-          venta={ventaEditando}
-          onClose={() => setVentaEditando(null)}
-          onSaved={() => {
-            fetchLibroVentas();
-            setVentaEditando(null);
-          }}
-        />
+      <EditVentaModal
+  venta={ventaEditando}
+  onClose={() => setVentaEditando(null)}
+ onSaved={(patch?: {
+  _id: string;
+  estadoRevision?: "pendiente" | "aceptada" | "rechazada" | null;
+}) => {
+  if (patch?._id) {
+    setVentas(prev =>
+      prev.map(v =>
+        v._id === patch._id
+          ? {
+              ...v,
+              estadoRevision:
+                patch.estadoRevision !== undefined
+                  ? patch.estadoRevision
+                  : v.estadoRevision,
+            }
+          : v
+      )
+    );
+  }
+
+  setVentaEditando(null);
+}}
+
+/>
+
+
       )}
 
       {ventaAEliminar && (
@@ -750,9 +844,11 @@ if (s.tipo === "ELIMINAR_VENTA") {
       try {
         await api.delete(`/ventas/${ventaAEliminar._id}`);
 
-        // ADMIN → eliminación directa
-        fetchLibroVentas();
-        setVentaAEliminar(null);
+setVentas(prev =>
+  prev.filter(v => v._id !== ventaAEliminar._id)
+);
+
+setVentaAEliminar(null);
 
       } catch (error: any) {
         if (error.response?.status === 403) {
@@ -846,6 +942,76 @@ function FiltroAnio({ anio, setAnio }: any) {
     </div>
   );
 }
+
+function PeriodoSelector({
+  mes,
+  anio,
+  setMes,
+  setAnio,
+  minPeriodo,
+  maxPeriodo,
+}: any) {
+  const actual = new Date(anio, mes - 1, 1);
+
+  const isAdmin =
+    JSON.parse(localStorage.getItem("user") || "{}")?.role === "admin";
+
+  const prevDate = new Date(anio, mes - 2, 1);
+  const nextDate = new Date(anio, mes, 1);
+
+  const prevDisabled = !isAdmin && minPeriodo && prevDate < minPeriodo;
+  const nextDisabled = !isAdmin && maxPeriodo && nextDate > maxPeriodo;
+
+  return (
+    <div className="bg-white border border-slate-200 rounded-xl px-6 py-4 flex items-center justify-between">
+      
+      {/* ◀ ANTERIOR */}
+      <button
+        disabled={prevDisabled}
+        onClick={() => {
+          setMes(prevDate.getMonth() + 1);
+          setAnio(prevDate.getFullYear());
+        }}
+        className="w-9 h-9 flex items-center justify-center
+                   rounded-full border border-slate-300
+                   text-slate-600 hover:bg-slate-100 hover:text-slate-900
+                   disabled:opacity-30 disabled:cursor-not-allowed transition"
+        aria-label="Periodo anterior"
+      >
+        <ChevronLeft size={18} />
+      </button>
+
+      {/* TEXTO */}
+      <div className="text-center select-none">
+        <p className="text-xs text-slate-500 uppercase tracking-wide">
+          Periodo
+        </p>
+        <p className="text-xl font-semibold text-slate-900 leading-tight">
+          {mesNombre(mes)} {anio}
+        </p>
+      </div>
+
+      {/* ▶ SIGUIENTE */}
+      <button
+        disabled={nextDisabled}
+        onClick={() => {
+          setMes(nextDate.getMonth() + 1);
+          setAnio(nextDate.getFullYear());
+        }}
+        className="w-9 h-9 flex items-center justify-center
+                   rounded-full border border-slate-300
+                   text-slate-600 hover:bg-slate-100 hover:text-slate-900
+                   disabled:opacity-30 disabled:cursor-not-allowed transition"
+        aria-label="Periodo siguiente"
+      >
+        <ChevronRight size={18} />
+      </button>
+
+    </div>
+  );
+}
+
+
 
 const meses = [
   "Enero","Febrero","Marzo","Abril","Mayo","Junio",

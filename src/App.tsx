@@ -111,51 +111,35 @@ function AppInner() {
         }
       />
 
-      {/* ================= CRM ================= */}
+      {/* ================= CRM (CON LAYOUT + OUTLET) ================= */}
       <Route
-        path="/crm/libro-ventas"
         element={
           <ProtectedRoute>
-            <Layout>
-              <LibroVentas />
-            </Layout>
+            <Layout />
           </ProtectedRoute>
         }
-      />
+      >
+        <Route path="/crm/libro-ventas" element={<LibroVentas />} />
+        <Route path="/crm/nueva-venta" element={<NuevaVenta />} />
 
-      <Route
-        path="/crm/nueva-venta"
-        element={
-          <ProtectedRoute>
-            <Layout>
-              <NuevaVenta />
-            </Layout>
-          </ProtectedRoute>
-        }
-      />
-      <Route
-  path="/crm/horario"
-  element={
-    <ProtectedRoute adminOnly>
-      <Layout>
-        <HorarioCRM />
-      </Layout>
-    </ProtectedRoute>
-  }
-/>
+        <Route
+          path="/crm/horario"
+          element={
+            <ProtectedRoute adminOnly>
+              <HorarioCRM />
+            </ProtectedRoute>
+          }
+        />
 
-
-      {/* ================= ADMIN ================= */}
-      <Route
-        path="/crm/usuarios"
-        element={
-          <ProtectedRoute adminOnly>
-            <Layout>
+        <Route
+          path="/crm/usuarios"
+          element={
+            <ProtectedRoute adminOnly>
               <CrearUsuario />
-            </Layout>
-          </ProtectedRoute>
-        }
-      />
+            </ProtectedRoute>
+          }
+        />
+      </Route>
 
       {/* ================= DEFAULT ================= */}
       <Route

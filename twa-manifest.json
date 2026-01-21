@@ -3,51 +3,48 @@
   "host": "crm-empresa-frontend.vercel.app",
   "name": "Horario Laboral",
   "launcherName": "Horario",
-
   "display": "fullscreen",
-  "displayOverride": ["fullscreen"],
-
   "themeColor": "#0F172A",
   "themeColorDark": "#0F172A",
-
   "navigationColor": "#000000",
   "navigationColorDark": "#000000",
   "navigationDividerColor": "#000000",
   "navigationDividerColorDark": "#000000",
-
   "backgroundColor": "#FFFFFF",
-
+  "enableNotifications": true,
   "startUrl": "/laboral/control-horario",
-  "fullScopeUrl": "https://crm-empresa-frontend.vercel.app/",
-
   "iconUrl": "https://crm-empresa-frontend.vercel.app/icon-512.png",
   "maskableIconUrl": "https://crm-empresa-frontend.vercel.app/icon-512.png",
-
   "splashScreenFadeOutDuration": 300,
-
-  "enableNotifications": true,
-
-  "fallbackType": "none",
-
   "signingKey": {
     "path": "C:\\twa\\horario\\android.keystore",
     "alias": "android"
   },
-
-  "appVersionName": "1.0.0",
-  "appVersionCode": 2,
-
+  "appVersionName": "1.1",
+  "appVersionCode": 3,
+  "shortcuts": [],
   "generatorApp": "bubblewrap-cli",
   "webManifestUrl": "https://crm-empresa-frontend.vercel.app/manifest.webmanifest",
-
+  "fallbackType": "none",
   "features": {
     "locationDelegation": {
       "enabled": true
     }
   },
-
-  "orientation": "default",
-  "minSdkVersion": 21,
+  "alphaDependencies": {
+    "enabled": false
+  },
+  "enableSiteSettingsShortcut": false,
   "isChromeOSOnly": false,
-  "enableSiteSettingsShortcut": false
+  "isMetaQuest": false,
+  "fullScopeUrl": "https://crm-empresa-frontend.vercel.app/",
+  "minSdkVersion": 21,
+  "orientation": "default",
+  "fingerprints": [],
+  "additionalTrustedOrigins": [],
+  "retainedBundles": [],
+  "displayOverride": [
+    "fullscreen"
+  ],
+  "appVersion": "1.1"
 }

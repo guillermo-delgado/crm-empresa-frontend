@@ -71,7 +71,7 @@ const ramosDisponibles = [
   "Decesos Prima Periodica",
   "Decesos Prima única",
   "Empresa sin multirriesgo",
-  "Empresas (074 o 078)",
+  "Multirriesgo (074 o 078)",
   "Comunidades",
   "Patinetes",
   "Viajes",
@@ -89,6 +89,7 @@ export default function VentaForm({
 }: Props) {
 
 
+const observacionesRef = useRef<HTMLTextAreaElement>(null);
 
   const dateRef = useRef<HTMLInputElement>(null);
 
@@ -97,9 +98,12 @@ export default function VentaForm({
 
   const [usuarios, setUsuarios] = useState<Usuario[]>([]);
 
-const [form, setForm] = useState<FormState>({
+const [form, setForm] = useState<FormState & {
+  createdByLabel: string;
+}>({
   fechaEfecto: "",
-  createdBy: "",
+  createdBy: "",          // ← ID REAL
+  createdByLabel: "",     // ← TEXTO VISIBLE
   aseguradora: "",
   ramo: "",
   numeroPoliza: "",
@@ -109,6 +113,7 @@ const [form, setForm] = useState<FormState>({
   actividad: "",
   observaciones: "",
 });
+
 
 
 
@@ -167,7 +172,11 @@ useEffect(() => {
 
   setForm({
     fechaEfecto: toInputDate(initialData.fechaEfecto),
-    createdBy: initialData.createdBy?._id || "",
+
+    // 🔑 NO viene createdBy → viene "usuario"
+    createdBy: "",
+    createdByLabel: initialData.usuario || "",
+
     aseguradora: initialData.aseguradora || "",
     ramo: initialData.ramo || "",
     numeroPoliza: initialData.numeroPoliza || "",
@@ -182,6 +191,15 @@ useEffect(() => {
 
 
 
+useEffect(() => {
+  if (!observacionesRef.current) return;
+
+  const el = observacionesRef.current;
+  el.style.height = "auto";
+  el.style.height = el.scrollHeight + "px";
+}, [form.observaciones]);
+
+
 
   const handleChange = (
     e: React.ChangeEvent<
@@ -191,12 +209,20 @@ useEffect(() => {
     setForm({ ...form, [e.target.name]: e.target.value });
   };
 
- const handleSubmit = (e: React.FormEvent) => {
+const handleSubmit = (e: React.FormEvent) => {
   e.preventDefault();
-  if (onSubmit) {
-    onSubmit(form);
-  }
+
+  if (!onSubmit) return;
+
+  const { createdByLabel, ...data } = form;
+
+  onSubmit({
+    ...data,
+    // solo enviamos createdBy si existe
+    createdBy: data.createdBy || undefined,
+  });
 };
+
 
 
   return (
@@ -238,27 +264,46 @@ useEffect(() => {
        {isAdmin && (
   <Field label="Usuario">
     <input
-      list="usuarios-list"
-      name="createdBy"
-      value={form.createdBy}
-      onChange={handleChange}
-      className={`input cursor-pointer ${
-        isChanged("createdBy" as FormField)
-          ? "border-red-500 ring-1 ring-red-400"
-          : ""
-      }`}
-      placeholder="Empieza a escribir nombre, email o numma"
-    />
+  list="usuarios-list"
+  value={form.createdByLabel}
+ onChange={(e) => {
+  const value = e.target.value;
 
-    <datalist id="usuarios-list">
+  setForm((prev) => ({
+    ...prev,
+    createdByLabel: value,
+    createdBy: "",
+  }));
+
+  const u = usuarios.find(
+    (u) =>
+      u.nombre === value ||
+      u.numma === value ||
+      u.email === value
+  );
+
+  if (u) {
+    setForm((prev) => ({
+      ...prev,
+      createdBy: u._id,
+    }));
+  }
+}}
+
+  className="input cursor-pointer"
+  placeholder="Empieza a escribir nombre, email o numma"
+/>
+
+
+<datalist id="usuarios-list">
   {usuarios.map((u) => (
-    <option
-      key={u._id}
-      value={`${u.nombre} (${u.numma || u.email})`}
-      data-id={u._id}
-    />
+    <option key={u._id} value={u.numma}>
+      {u.nombre}
+    </option>
   ))}
 </datalist>
+
+
 
   </Field>
 )}
@@ -369,64 +414,65 @@ useEffect(() => {
         </Field>
 
         <Field label="Forma de pago">
-          <select
-            name="formaPago"
-            value={form.formaPago}
-            onChange={handleChange}
-            className="input cursor-pointer"
-          >
-            <option value="">Selecciona forma de pago</option>
-            <option value="Anual">Anual</option>
-            <option value="Mensual">Mensual</option>
-          </select>
-        </Field>
+  <select
+    name="formaPago"
+    value={form.formaPago}
+    onChange={handleChange}
+    className="input cursor-pointer"
+  >
+    <option value="">Selecciona forma de pago</option>
+    <option value="Anual">Anual</option>
+    <option value="Semestral">Semestral</option>
+    <option value="Trimestral">Trimestral</option>
+    <option value="Mensual">Mensual</option>
+  </select>
+</Field>
+
 
         <Field label="Actividad">
-          <select
-  name="actividad"
-  value={form.actividad}
-  onChange={handleChange}
-  className={`input cursor-pointer ${
-    isChanged("actividad" as FormField)
-      ? "border-red-500 ring-1 ring-red-400"
-      : ""
-  }`}
-  required
->
+  <select
+    name="actividad"
+    value={form.actividad}
+    onChange={handleChange}
+    className="input cursor-pointer"
+    required
+  >
+    <option value="">Selecciona actividad</option>
 
-            <option value="">Selecciona actividad</option>
-            <option value="SGC">SGC</option>
-            <option value="OFICINA">OFICINA</option>
-            <option value="TELEFONICO">TELEFONICO</option>
-            <option value="INTERNET">INTERNET</option>
-            <option value="RED PERSONAL">RED PERSONAL</option>
-          </select>
+    {/* Para todos los usuarios */}
+    <option value="RECOMENDADO">RECOMENDADO</option>
+    <option value="SGC">SGC</option>
+    <option value="OFICINA">OFICINA</option>
+    <option value="TELEFONICO">TELEFONICO</option>
+    <option value="INTERNET">INTERNET</option>
+    <option value="RED PERSONAL">RED PERSONAL</option>
 
-          
+    {/* Solo Admin */}
+    {isAdmin && (
+      <>
+        <option value="FINCAS">ADMINISTRADOR DE FINCAS</option>
+        <option value="COLABORADORES">COLABORADORES</option>
+      </>
+    )}
+  </select>
+</Field>
 
-  {isChanged("actividad" as FormField) && originalData && (
-  <p className="text-red-600 text-xs mt-1">
-    Antes: {originalData.actividad ?? "-"} 
-  </p>
-)}
-        </Field>
 
-        <Field label="Observaciones">
-          <textarea
-            name="observaciones"
-            value={form.observaciones}
-            onChange={handleChange}
-            rows={3}
-            className="input resize-none"
-          />
-          
+       <Field label="Observaciones">
+    <textarea
+      ref={observacionesRef}
+      name="observaciones"
+      value={form.observaciones}
+      onChange={(e) => {
+        setForm({ ...form, observaciones: e.target.value });
 
-  {isChanged("observaciones" as FormField) && originalData && (
-  <p className="text-red-600 text-xs mt-1">
-    Antes: {originalData.observaciones ?? "-"} 
-  </p>
-)}
-        </Field>
+        e.target.style.height = "auto";
+        e.target.style.height = e.target.scrollHeight + "px";
+      }}
+      rows={3}
+      className="input w-full resize-none overflow-hidden"
+    />
+  </Field>
 
       </div>
 

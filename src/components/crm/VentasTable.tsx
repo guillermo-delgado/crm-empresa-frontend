@@ -27,8 +27,14 @@ const getRowClass = (
   venta: Venta,
   isAdmin?: boolean
 ) => {
-  if (isAdmin) return "";
+  // 👑 ADMIN → azul pastel SOLO si hay solicitud pendiente
+  if (isAdmin) {
+    return venta.estadoRevision === "pendiente"
+      ? "bg-blue-50"
+      : "";
+  }
 
+  // 👤 EMPLEADO → colores actuales
   switch (venta.estadoRevision) {
     case "pendiente":
       return "bg-yellow-50";
@@ -40,6 +46,7 @@ const getRowClass = (
       return "";
   }
 };
+
 
 export default function VentasTable({
   ventas,

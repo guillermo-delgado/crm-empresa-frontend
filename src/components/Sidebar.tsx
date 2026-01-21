@@ -14,12 +14,16 @@ type SidebarProps = {
   collapsed: boolean;
   setCollapsed: (value: boolean) => void;
   mobile?: boolean;
+
+  // 🔔 NUEVO: contador de revisiones
+  revisionCount?: number;
 };
 
 export default function Sidebar({
   collapsed,
   setCollapsed,
   mobile = false,
+  revisionCount = 0,
 }: SidebarProps) {
   const navigate = useNavigate();
 
@@ -67,10 +71,11 @@ export default function Sidebar({
 
       {/* MENÚ */}
       <nav className="flex-1 px-2 py-4 space-y-1">
+        {/* 📊 LIBRO DE VENTAS + BADGE */}
         <NavLink
           to="/crm/libro-ventas"
           className={({ isActive }) =>
-            `flex items-center gap-3 px-3 py-2 rounded-md ${
+            `relative flex items-center gap-3 px-3 py-2 rounded-md ${
               isActive
                 ? "bg-slate-700 text-white"
                 : "text-slate-300 hover:bg-slate-800"
@@ -78,7 +83,28 @@ export default function Sidebar({
           }
         >
           <LayoutDashboard size={20} />
+
           {!collapsed && <span>Libro de ventas</span>}
+
+          {/* 🔔 BADGE */}
+         {revisionCount > 0 && (
+  <span
+    className={`
+      ${collapsed
+        ? "absolute -top-1 -right-1 w-5 h-5 text-[11px]"
+        : "ml-auto px-2 py-0.5 text-xs"}
+      flex items-center justify-center
+      bg-sky-500
+      text-slate-700
+      font-semibold
+      rounded-full
+    `}
+  >
+    {revisionCount}
+  </span>
+)}
+
+
         </NavLink>
 
         <NavLink
