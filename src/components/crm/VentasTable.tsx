@@ -112,44 +112,51 @@ export default function VentasTable({
 
               {/* ACCIONES */}
               <td className="px-4 py-2 text-center">
-                <div className="flex justify-center gap-3">
-                  <button
-                    type="button"
-                    disabled={!onEdit}
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      onEdit?.(v);
-                    }}
-                    className="
-                      text-blue-600 text-xs font-medium
-                      hover:underline
-                      cursor-pointer
-                      disabled:opacity-40
-                      disabled:cursor-not-allowed
-                    "
-                  >
-                    Editar
-                  </button>
+  <div className="flex justify-center gap-3">
 
-                  <button
-                    type="button"
-                    disabled={!onDelete}
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      onDelete?.(v);
-                    }}
-                    className="
-                      text-red-600 text-xs font-medium
-                      hover:underline
-                      cursor-pointer
-                      disabled:opacity-40
-                      disabled:cursor-not-allowed
-                    "
-                  >
-                    Eliminar
-                  </button>
-                </div>
-              </td>
+    {/* EDITAR / ACTUALIZAR */}
+    <button
+      type="button"
+      disabled={!onEdit}
+      onClick={(e) => {
+        e.stopPropagation();
+        onEdit?.(v);
+      }}
+      className="
+        text-blue-600 text-xs font-medium
+        hover:underline
+        cursor-pointer
+        disabled:opacity-40
+        disabled:cursor-not-allowed
+      "
+    >
+      {isAdmin && v.estadoRevision === "pendiente"
+        ? "Actualizar"
+        : "Editar"}
+    </button>
+
+    {/* ELIMINAR */}
+    <button
+      type="button"
+      disabled={!onDelete}
+      onClick={(e) => {
+        e.stopPropagation();
+        onDelete?.(v);
+      }}
+      className="
+        text-red-600 text-xs font-medium
+        hover:underline
+        cursor-pointer
+        disabled:opacity-40
+        disabled:cursor-not-allowed
+      "
+    >
+      Eliminar
+    </button>
+
+  </div>
+</td>
+
             </tr>
           ))}
 

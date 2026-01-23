@@ -3,6 +3,17 @@ import type { ReactNode } from "react";
 import { useEffect, useState } from "react";
 import api from "../../services/api";
 
+/* ======================================================
+   📱 DETECTOR DE DISPOSITIVO MÓVIL / TABLET
+====================================================== */
+const isMobileDevice = () => {
+  if (typeof navigator === "undefined") return false;
+
+  return /android|iphone|ipad|ipod|mobile/i.test(
+    navigator.userAgent
+  );
+};
+
 type Props = {
   children: ReactNode;
   adminOnly?: boolean;
@@ -19,13 +30,17 @@ export default function ProtectedRoute({
   const [loading, setLoading] = useState(true);
   const [enJornada, setEnJornada] = useState<boolean>(false);
 
+  const isMobile = isMobileDevice();
+
   /* ======================================================
      🔒 BLOQUEO FRONTEND POR FIN DE JORNADA (SOCKET)
   ====================================================== */
   const jornadaCerrada =
     localStorage.getItem("jornada_cerrada") === "1";
 
-  // 🔒 No autenticado
+  /* ======================================================
+     🔐 NO AUTENTICADO
+  ====================================================== */
   if (!token || !user) {
     return <Navigate to="/login" replace />;
   }
@@ -39,7 +54,7 @@ export default function ProtectedRoute({
   }
 
   /* ======================================================
-     👑 ADMIN → acceso total
+     👑 ADMIN → ACCESO TOTAL
   ====================================================== */
   useEffect(() => {
     if (parsedUser.role === "admin") {
@@ -49,17 +64,13 @@ export default function ProtectedRoute({
     }
 
     /* ======================================================
-       👤 EMPLEADO → comprobar jornada real (backend)
+       👤 EMPLEADO → COMPROBAR JORNADA REAL (BACKEND)
     ====================================================== */
     const checkHorario = async () => {
       try {
         const res = await api.get("/horario/hoy");
 
-        if (res.data?.estado === "DENTRO") {
-          setEnJornada(true);
-        } else {
-          setEnJornada(false);
-        }
+        setEnJornada(res.data?.estado === "DENTRO");
       } catch {
         setEnJornada(false);
       } finally {
@@ -75,23 +86,38 @@ export default function ProtectedRoute({
   }
 
   /* ======================================================
-     🚫 BLOQUEO CRM (DOBLE GARANTÍA)
-     - jornada cerrada por socket (instantáneo)
-     - o jornada fuera según backend
+     🚫 CORTAFUEGOS CRM (EMPLEADOS)
+     - MÓVIL / TABLET → SIEMPRE BLOQUEADO
+     - FUERA DE JORNADA → BLOQUEADO
+     - CIERRE POR SOCKET → BLOQUEADO
   ====================================================== */
   if (
     parsedUser.role === "empleado" &&
-    (jornadaCerrada || !enJornada) &&
-    location.pathname.startsWith("/crm")
+    location.pathname.startsWith("/crm") &&
+    (
+      isMobile ||          // 📱 móvil / tablet
+      jornadaCerrada ||    // 🔌 cierre forzado
+      !enJornada           // ⏱ fuera de jornada
+    )
   ) {
-    return <Navigate to="/laboral/control-horario" replace />;
+    return (
+      <Navigate
+        to="/laboral/control-horario"
+        replace
+      />
+    );
   }
 
   /* ======================================================
-     🔐 Rutas solo admin
+     🔐 RUTAS SOLO ADMIN
   ====================================================== */
   if (adminOnly && parsedUser.role !== "admin") {
-    return <Navigate to="/laboral/control-horario" replace />;
+    return (
+      <Navigate
+        to="/laboral/control-horario"
+        replace
+      />
+    );
   }
 
   return <>{children}</>;

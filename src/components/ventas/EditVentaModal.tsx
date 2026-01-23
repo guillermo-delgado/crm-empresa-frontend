@@ -93,7 +93,8 @@ export default function EditVentaModal({
 
               originalData={originalData}
               changedFields={changedFields}
-              hideActions={isSolicitud}
+              hideActions={false}
+
               submitLabel={isDelete ? "" : "Guardar cambios"}
               onCancel={onClose}
               onSubmit={async (data) => {

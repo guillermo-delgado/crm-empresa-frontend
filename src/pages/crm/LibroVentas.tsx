@@ -60,7 +60,7 @@ type LayoutContext = {
 
 export default function LibroVentas() {
   const { setRevisionCount } = useOutletContext<LayoutContext>();
-console.log("OK setRevisionCount:", setRevisionCount);
+// console.log("OK setRevisionCount:", setRevisionCount);
 
   const navigate = useNavigate();
 
@@ -84,7 +84,7 @@ const hoy = new Date();
 const minPeriodo = new Date(hoy.getFullYear(), hoy.getMonth(), 1);
 const maxPeriodo = new Date(hoy.getFullYear(), hoy.getMonth() + 2, 1);
 
-const [solicitudesPendientes, setSolicitudesPendientes] = useState(0);
+
 const [showSolicitudesModal, setShowSolicitudesModal] = useState(false);
 const [solicitudes, setSolicitudes] = useState<any[]>([]);
 const [showDeleteInfo, setShowDeleteInfo] = useState(false);
@@ -104,6 +104,16 @@ const solicitudesOrdenadas = useMemo(() => {
 
 
   const [ventas, setVentas] = useState<VentaAPI[]>([]);
+  useEffect(() => {
+  if (isAdmin) return;
+
+  const pendientes = ventas.filter(
+    v => v.estadoRevision === "pendiente" || v.estadoRevision === "aceptada" || v.estadoRevision === "rechazada"
+  ).length;
+
+  setRevisionCount(pendientes);
+}, [ventas, isAdmin]);
+
   const [loading, setLoading] = useState(false);
 
   const [ventaEditando, setVentaEditando] = useState<VentaEditando | null>(null);
@@ -125,12 +135,17 @@ const cargarSolicitudes = async () => {
     const total = res.data?.length || 0;
 
     setSolicitudes(res.data || []);
-    setSolicitudesPendientes(total);
-
-    // 🔔 CLAVE: sincronizar badge global
-    setRevisionCount(total);
-  } catch {}
+    setRevisionCount(total); // 🔔 ÚNICA fuente del badge
+  } catch {
+    setRevisionCount(0);
+  }
 };
+
+
+
+
+
+
 
 
   const fetchLibroVentas = async () => {
@@ -155,6 +170,7 @@ useEffect(() => {
   if (!isAdmin) return;
   cargarSolicitudes();
 }, [isAdmin]);
+
 
 
 // 3️⃣ Socket tiempo real
@@ -186,11 +202,8 @@ const onVentaEliminada = ({ ventaId }: any) => {
 
 
 const onSolicitudCreada = ({ ventaId }: any) => {
- if (!ventaId) return;
-  setRevisionCount(prev => prev + 1);
+  if (!ventaId) return;
 
-
-  // 🔵 Pintar fila azul pastel INMEDIATO
   setVentas(prev =>
     prev.map(v =>
       v._id === ventaId
@@ -199,45 +212,38 @@ const onSolicitudCreada = ({ ventaId }: any) => {
     )
   );
 
-  // 🔔 actualizar contador / listado
-  if (isAdmin) cargarSolicitudes();
+  if (isAdmin) {
+    cargarSolicitudes(); // ✅ backend manda
+  }
 };
+
+
 
 
 const onSolicitudResuelta = ({ ventaId, estado }: any) => {
   if (!ventaId || !estado) return;
-// 👤 EMPLEADO: feedback visual inmediato
-if (!isAdmin) {
-  setVentas(prev =>
-    prev.map(v =>
-      v._id === ventaId
-        ? { ...v, estadoRevision: estado }
-        : v
-    )
-  );
-}
 
-  
-
-
-  // 2️⃣ Traer venta actualizada
-  api.get(`/ventas/${ventaId}`).then(res => {
+  // 👤 EMPLEADO → SOLO feedback visual
+  if (!isAdmin) {
     setVentas(prev =>
       prev.map(v =>
-        v._id === ventaId ? res.data : v
+        v._id === ventaId
+          ? { ...v, estadoRevision: estado }
+          : v
       )
     );
-  });
+  }
 
-  // ✅ 3️⃣ SOLO ADMIN baja el badge
-if (isAdmin) cargarSolicitudes();
-if (isAdmin) {
-  setRevisionCount(prev => Math.max(0, prev - 1));
-}
-
-
-
+  // 👑 ADMIN → refresca solicitudes reales
+  if (isAdmin) {
+    cargarSolicitudes();
+  }
 };
+
+
+
+
+
 
 
 
@@ -396,11 +402,12 @@ socket.off("SOLICITUD_RESUELTA", onSolicitudResuelta);
        
 
       {/* AVISO ADMIN */}
-      {isAdmin && solicitudesPendientes > 0 && (
-        <div className="bg-yellow-100 border border-yellow-300 text-yellow-800 px-4 py-3 rounded">
-          ⚠️ Tienes solicitudes de empleados pendientes de revisión
-        </div>
-      )}
+     {isAdmin && solicitudes.length > 0 && (
+  <div className="bg-yellow-100 border border-yellow-300 text-yellow-800 px-4 py-3 rounded">
+    ⚠️ Tienes solicitudes de empleados pendientes de revisión
+  </div>
+)}
+
 
       {/* KPIs */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
@@ -512,22 +519,20 @@ socket.off("SOLICITUD_RESUELTA", onSolicitudResuelta);
     isAdmin={isAdmin}
 
     // 🔔 NUEVO: limpiar color por fila (SIN sockets)
-    onClearRevision={async (row) => {
-      try {
-       await api.patch(`/ventas/${row._id}/marcar-revision-leida`);
+onClearRevision={async (row) => {
+  await api.patch(`/ventas/${row._id}/marcar-revision-leida`);
 
-setVentas(prev =>
-  prev.map(v =>
-    v._id === row._id ? { ...v, estadoRevision: null } : v
-  )
-);
-setRevisionCount(prev => Math.max(0, prev - 1));
+  setVentas(prev =>
+    prev.map(v =>
+      v._id === row._id ? { ...v, estadoRevision: null } : v
+    )
+  );
+
+  // ❌ NUNCA tocar badge aquí
+}}
 
 
-      } catch (e) {
-        console.error("Error limpiando estado de revisión", e);
-      }
-    }}
+
 
    onEdit={async (row) => {
   const originalVenta = ventas.find(v => v._id === row._id);
@@ -539,39 +544,67 @@ const original = JSON.parse(JSON.stringify(originalVenta));
 let ventaInicial: any = JSON.parse(JSON.stringify(original));
 let changedFields: string[] = [];
 
+let solicitudId: string | undefined;
 
-  // 🟡 SI ES EMPLEADO Y ESTÁ PENDIENTE → cargar solicitud
-  if (!isAdmin && original.estadoRevision === "pendiente") {
-    try {
-      const res = await api.get(
-        `/ventas/${original._id}/solicitud-pendiente`
-      );
+if (original.estadoRevision === "pendiente") {
+  try {
+    const res = await api.get(
+      `/ventas/${original._id}/solicitud-pendiente`
+    );
 
-      const solicitud = res.data;
-      if (solicitud?.payload) {
-        ventaInicial = {
-          ...ventaInicial,
-          ...solicitud.payload,
-        };
+    const solicitud = res.data;
 
-        changedFields = Object.keys(solicitud.payload);
-      }
-    } catch {
-      // si falla, cae al comportamiento normal
+    if (solicitud?.payload) {
+      ventaInicial = {
+        ...ventaInicial,
+        ...solicitud.payload,
+      };
+
+      changedFields = Object.keys(solicitud.payload);
+      solicitudId = solicitud._id; // 🔴 ESTA ERA LA CLAVE
     }
+  } catch {
+    // nada
   }
+}
+
+
+
+ // 🟡 SI HAY REVISIÓN PENDIENTE → cargar solicitud (ADMIN o EMPLEADO)
+if (original.estadoRevision === "pendiente") {
+  try {
+    const res = await api.get(
+      `/ventas/${original._id}/solicitud-pendiente`
+    );
+
+    const solicitud = res.data;
+    if (solicitud?.payload) {
+      ventaInicial = {
+        ...ventaInicial,
+        ...solicitud.payload,
+      };
+
+      changedFields = Object.keys(solicitud.payload);
+    }
+  } catch {
+    // fallback a edición normal
+  }
+}
+
 
   // 🗓 Normalizar fecha
   ventaInicial.fechaEfecto = String(
     ventaInicial.fechaEfecto
   ).slice(0, 10);
 
-  setVentaEditando({
-    data: ventaInicial,     // 🔥 DATOS EDITADOS
-    original: original,     // base real
-    changedFields,          // 🔥 para "Antes:"
-    fromSocket: false,
-  });
+ setVentaEditando({
+  data: ventaInicial,
+  original,
+  changedFields,
+  solicitudId, // 🔥 IMPRESCINDIBLE
+  fromSocket: false,
+});
+
 }}
 
 
@@ -619,7 +652,7 @@ let changedFields: string[] = [];
     try {
       const res = await api.get("/solicitudes");
       setSolicitudes(res.data || []);
-      setSolicitudesPendientes(res.data.length);
+      
       setShowSolicitudesModal(true);
     } catch {
       alert("Error cargando solicitudes");

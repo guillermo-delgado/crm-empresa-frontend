@@ -11,18 +11,21 @@ type Fichaje = {
 };
 
 type Dia = {
-  fecha: string; // YYYY-MM-DD
+  fecha: string;
   diaSemana: string;
-  horas: string;
+  minutosTrabajados: number;
   fichajes: Fichaje[];
 };
+
 
 type HistorialResponse = {
   mes: string; // YYYY-MM
   totalHoras: string;
   diasTrabajados: number;
+  horasContratadasSemana: number; // 👈 AÑADIR ESTA LÍNEA
   dias: Dia[];
 };
+
 
 /* =======================
    HELPERS (YA EXISTENTES)
@@ -51,10 +54,16 @@ const getWeekRange = (dateStr: string) => {
   };
 };
 
-const horasToMin = (horas: string) => {
-  const [h, m] = horas.match(/\d+/g)?.map(Number) || [0, 0];
-  return h * 60 + m;
-};
+// const horasToMin = (horas?: string) => {
+//   if (!horas) return 0;
+
+//   const nums = horas.match(/\d+/g)?.map(Number) || [0, 0];
+//   const h = nums[0] ?? 0;
+//   const m = nums[1] ?? 0;
+
+//   return h * 60 + m;
+// };
+
 
 const minToHoras = (min: number) =>
   `${Math.floor(min / 60)} h ${min % 60} min`;
@@ -115,13 +124,29 @@ export default function HistorialHorario() {
     );
   }
 
-  if (!data) {
-    return (
-      <div className="p-6 text-slate-500">
-        No hay datos disponibles
-      </div>
-    );
-  }
+ if (!data) {
+  return (
+    <div className="p-6 text-slate-500">
+      No hay datos disponibles
+    </div>
+  );
+}
+// console.log("HORAS CONTRATO:", data.horasContratadasSemana);
+const minutosContratoSemana =
+  Number(data.horasContratadasSemana ?? 0) * 60;
+
+  const diasTrabajados = data.dias.filter(
+  d => (d.minutosTrabajados ?? 0) > 0
+).length;
+
+const totalMinutosMes = data.dias.reduce(
+  (acc, d) => acc + (d.minutosTrabajados ?? 0),
+  0
+);
+
+const totalHorasMes = minToHoras(totalMinutosMes);
+
+
 
   /* =======================
      AGRUPAR POR SEMANAS
@@ -143,7 +168,8 @@ export default function HistorialHorario() {
     }
 
     semanas[week.key].dias.push(dia);
-    semanas[week.key].totalMin += horasToMin(dia.horas);
+    semanas[week.key].totalMin += dia.minutosTrabajados ?? 0;
+
   });
 
   return (
@@ -165,17 +191,23 @@ export default function HistorialHorario() {
         </button>
 
         <div className="text-center space-y-1">
-          <h1 className="text-xl font-semibold capitalize">
-            Historial · {formatearMes(data.mes)}
-          </h1>
+  <h1 className="text-xl font-semibold capitalize">
+    Historial · {formatearMes(data.mes)}
+  </h1>
 
-          <p className="text-slate-600 text-sm">
-            Días trabajados:{" "}
-            <span className="font-medium">{data.diasTrabajados}</span>{" "}
-            · Horas trabajadas:{" "}
-            <span className="font-medium">{data.totalHoras}</span>
-          </p>
-        </div>
+  <div className="text-slate-600 text-sm leading-tight">
+    <div>
+      Días trabajados:{" "}
+      <span className="font-medium">{diasTrabajados}</span>
+    </div>
+
+    <div>
+      Horas trabajadas:{" "}
+      <span className="font-medium">{totalHorasMes}</span>
+    </div>
+  </div>
+</div>
+
 
         <button
   onClick={() => setMesActual(sumarMes(mesActual, 1))}
@@ -196,37 +228,80 @@ export default function HistorialHorario() {
 
       {/* SEMANAS */}
       <div className="space-y-8">
-        {Object.values(semanas).map((semana) => (
+       {Object.values(semanas)
+  .filter((semana) => semana.totalMin > 0)
+  .map((semana) => (
+
           <div key={semana.label} className="space-y-4">
             {/* SEPARADOR SEMANA */}
             <div className="bg-slate-100 rounded-lg px-4 py-2 text-sm text-slate-600">
-              <div className="font-medium">{semana.label}</div>
-              <div>
-                Horas trabajadas:{" "}
-                <span className="font-semibold">
-                  {minToHoras(semana.totalMin)}
-                </span>
-              </div>
-            </div>
+  <div className="font-medium">{semana.label}</div>
+
+  <div className="flex justify-between">
+    <span>
+      Horas trabajadas:{" "}
+      <span className="font-semibold">
+        {minToHoras(semana.totalMin)}
+      </span>
+    </span>
+
+    {(() => {
+      const diff =
+  semana.totalMin - (Number(minutosContratoSemana) || 0);
+
+      return (
+        <span
+          className={
+            diff > 0
+              ? "text-green-600 font-semibold"
+              : diff < 0
+              ? "text-red-600 font-semibold"
+              : "text-slate-500"
+          }
+        >
+          {diff > 0 ? "+" : diff < 0 ? "-" : ""}
+          {minToHoras(Math.abs(diff))}
+        </span>
+      );
+    })()}
+  </div>
+</div>
+
 
             {/* DÍAS */}
-            {semana.dias.map((dia) => (
+            {semana.dias
+  .filter((dia) => (dia.minutosTrabajados ?? 0) > 0)
+  .map((dia) => (
+
               <div
-                key={dia.fecha}
-                className="bg-white rounded-xl shadow p-4"
-              >
-               <button
+  key={dia.fecha}
+  className={`
+    rounded-xl shadow p-4 transition
+    ${
+      openDay === dia.fecha
+  ? "bg-blue-50 border border-blue-200"
+  : "bg-white border border-transparent"
+
+    }
+  `}
+>
+
+              <button
   onClick={() =>
     setOpenDay(openDay === dia.fecha ? null : dia.fecha)
   }
-  className="
+  className={`
     w-full flex justify-between items-center
-    cursor-pointer
-    hover:bg-slate-50
-    rounded-lg
-    transition
-  "
+    rounded-lg p-2 -m-2
+    transition cursor-pointer
+    ${
+      openDay === dia.fecha
+        ? "bg-blue-100"
+        : "hover:bg-slate-50"
+    }
+  `}
 >
+
 
                   <div className="text-left">
                     <div className="font-medium capitalize">
@@ -237,26 +312,38 @@ export default function HistorialHorario() {
                     </div>
                   </div>
 
-                  <div className="font-semibold">
-                    {dia.horas}
-                  </div>
+                <div className="font-semibold">
+  {minToHoras(dia.minutosTrabajados ?? 0)}
+</div>
+
+
                 </button>
 
-                {openDay === dia.fecha && (
-                  <div className="mt-4 border-t pt-3 space-y-2">
-                    {dia.fichajes.map((f, i) => (
-                      <div
-                        key={i}
-                        className="flex justify-between text-sm text-slate-600"
-                      >
-                        <span>{f.tipo}</span>
-                        <span>{f.hora}</span>
-                      </div>
-                    ))}
-                  </div>
-                )}
+                {openDay === dia.fecha && (() => {
+  const fichajesOrdenados = [...dia.fichajes].sort(
+    (a, b) => a.hora.localeCompare(b.hora)
+  );
+
+  return (
+    <div className="mt-4 border-t pt-3 space-y-2">
+      {fichajesOrdenados.map((f, i) => (
+        <div
+          key={i}
+          className="flex justify-between text-sm text-slate-600"
+        >
+          <span>{f.tipo}</span>
+          <span>{f.hora}</span>
+        </div>
+      ))}
+    </div>
+  );
+})()}
+
+                
+                
               </div>
             ))}
+            
           </div>
         ))}
       </div>

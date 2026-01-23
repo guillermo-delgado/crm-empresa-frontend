@@ -603,10 +603,11 @@ const tipoFinal = trabajado;
 
         {/* DERECHA */}
         {duracion !== null && (
-          <div className="text-sm font-medium text-slate-600">
-            {duracion} min
-          </div>
-        )}
+  <div className="text-sm font-medium text-slate-600">
+    {Math.floor(duracion / 60)} h {duracion % 60} min
+  </div>
+)}
+
       </div>
     );
   })}

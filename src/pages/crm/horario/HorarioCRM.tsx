@@ -36,8 +36,15 @@ type DiaCalendario = {
   horaSalidaManana?: string | null;
   horaEntradaTarde?: string | null;
   horaSalidaTarde?: string | null;
+
+  fichajes: Fichaje[]; // ⬅️ no opcional
 };
 
+
+type Fichaje = {
+  tipo: "ENTRADA" | "SALIDA";
+  hora: string; // "HH:mm"
+};
 
 
 
@@ -99,6 +106,40 @@ const [jornadaTarde, setJornadaTarde] = useState({
   entrada: "",
   salida: "",
 });
+useEffect(() => {
+  if (modoModal !== "JORNADAS" || !diaActivo) return;
+
+  // 🔒 Limpieza total siempre
+  setJornadaManana({ entrada: "", salida: "" });
+  setJornadaTarde({ entrada: "", salida: "" });
+
+  const fichajes = (diaActivo.fichajes ?? [])
+    .filter(f => f.hora && f.hora !== "00:00")
+    .sort((a, b) => a.hora.localeCompare(b.hora));
+
+  const entradas = fichajes.filter(f => f.tipo === "ENTRADA");
+  const salidas  = fichajes.filter(f => f.tipo === "SALIDA");
+
+  setJornadaManana({
+    entrada: entradas[0]?.hora ?? "",
+    salida:  salidas[0]?.hora ?? "",
+  });
+
+  setJornadaTarde({
+    entrada: entradas[1]?.hora ?? "",
+    salida:  salidas[1]?.hora ?? "",
+  });
+}, [modoModal, diaActivo]);
+
+
+useEffect(() => {
+  if (!diaActivo) {
+    setHorasManana({ entrada: "", salida: "" });
+    setHorasTarde({ entrada: "", salida: "" });
+  }
+}, [diaActivo]);
+
+
 
 
 
@@ -182,18 +223,20 @@ useEffect(() => {
         params: { mes },
       })
       .then((res) => {
-        setDias(
-          res.data.dias.map((d: any) => ({
-            fecha: d.fecha,
-            estado: d.estado ?? d.tipo ?? null,
-            minutosTrabajados: 0,
-            turno: null,
-          }))
-        );
+  setDias(
+  res.data.dias.map((d: DiaCalendario) => ({
+    ...d,
+    fichajes: d.fichajes ?? [],
+  }))
+);
 
-        setHorasTrabajadas(0);
-        setBalanceMinutos(0);
-      })
+
+  setHorasTrabajadas(res.data.horasTrabajadas);
+  setHorasContratadasSemana(res.data.horasContratadasSemana);
+  setMaxDiasVacaciones(res.data.maxDiasVacaciones);
+  setBalanceMinutos(res.data.balanceMinutos);
+})
+
       .finally(() => setLoading(false));
 
     return;
@@ -208,7 +251,14 @@ useEffect(() => {
       },
     })
     .then((res) => {
-      setDias(res.data.dias);
+       console.log("🟦 FRONT DIAS RAW:", res.data.dias);
+      setDias(
+  res.data.dias.map(d => ({
+    ...d,
+    fichajes: d.fichajes ?? [],
+  }))
+);
+
       setHorasTrabajadas(res.data.horasTrabajadas);
       setHorasContratadasSemana(res.data.horasContratadasSemana);
       setMaxDiasVacaciones(res.data.maxDiasVacaciones);
@@ -254,10 +304,15 @@ const marcarDia = async (
 
   // 🟩 BOTONES DE TURNO → SOLO SELECCIÓN (NO GUARDA)
   setDiaActivo({
-    ...diaActivo,
-    estado: null,
-    turno: turno ?? null,
-  });
+  ...diaActivo,
+  estado: null,
+  turno: turno ?? null,
+  horaEntradaManana: null,
+  horaSalidaManana: null,
+  horaEntradaTarde: null,
+  horaSalidaTarde: null,
+});
+
 };
 
 
@@ -289,9 +344,10 @@ const marcarDia = async (
       : null,
 });
 
+setModoModal(null);
+setDiaActivo(null);
+await cargarHorario();
 
-  setDiaActivo(null);
-  cargarHorario();
 };
 
 const eliminarMarca = async () => {
@@ -569,25 +625,18 @@ const cambiarMes = (delta: number) => {
 
     return (
       <div key={n} className="relative group">
- <button
+<button
   onClick={() => {
-  setDiaActivo({
-    fecha: `${mes}-${String(n).padStart(2, "0")}`,
-    estado: dia?.estado ?? null,
-    minutosTrabajados: dia?.minutosTrabajados ?? 0,
-    turno: dia?.turno ?? null,
-    horaEntradaManana: dia?.horaEntradaManana ?? null,
-    horaSalidaManana: dia?.horaSalidaManana ?? null,
-    horaEntradaTarde: dia?.horaEntradaTarde ?? null,
-    horaSalidaTarde: dia?.horaSalidaTarde ?? null,
-  });
+    console.log("🟨 DIA CLICK:", dia);
 
-  // ⬇️ ESTA LÍNEA ES LA CLAVE Y NO ROMPE NADA
-  if (empleadoId === "ALL" && !modoModal) {
-    setModoModal("ACCIONES");
-  }
-}}
+    // ✅ USAR EL DÍA COMPLETO TAL COMO VIENE DEL BACKEND
+    setDiaActivo(dia ?? null);
 
+    // ⬇️ ESTA LÍNEA SE QUEDA IGUAL
+    if (empleadoId === "ALL" && !modoModal) {
+      setModoModal("ACCIONES");
+    }
+  }}
   className={`
     h-24
     w-full
@@ -641,14 +690,15 @@ const cambiarMes = (delta: number) => {
       </div>
     )}
 
-    {/* HORARIOS */}
-    {dia?.turno === "MANANA" &&
-      dia.horaEntradaManana &&
-      dia.horaSalidaManana && (
-        <div className="text-[11px] text-slate-600">
-          {dia.horaEntradaManana} - {dia.horaSalidaManana}
-        </div>
-      )}
+    {/* HORARIOS TEÓRICOS (SE MANTIENEN) */}
+   {dia?.turno === "MANANA" &&
+  dia.horaEntradaManana &&
+  dia.horaSalidaManana && (
+    <div className="text-[11px] text-slate-600">
+      {dia.horaEntradaManana} - {dia.horaSalidaManana}
+    </div>
+)}
+
 
     {dia?.turno === "TARDE" &&
       dia.horaEntradaTarde &&
@@ -667,24 +717,23 @@ const cambiarMes = (delta: number) => {
     )}
   </div>
 
-  {/* OK / + / - (SIEMPRE VISIBLE) */}
-  {empleadoId !== "ALL" && dia && dia.turno && (
-    (() => {
-      const balance = calcularBalanceDia(dia);
-      if (balance === null) return null;
+  {/* OK / + / - */}
+  {empleadoId !== "ALL" && dia && dia.turno && (() => {
+    const balance = calcularBalanceDia(dia);
+    if (balance === null) return null;
 
-      return (
-        <div
-          className={`text-[11px] font-semibold leading-none mt-auto ${
-            balance > 0 ? "text-red-600" : "text-green-600"
-          }`}
-        >
-          {balance === 0 ? "OK" : formatearBalance(balance)}
-        </div>
-      );
-    })()
-  )}
+    return (
+      <div
+        className={`text-[11px] font-semibold leading-none mt-auto ${
+          balance > 0 ? "text-red-600" : "text-green-600"
+        }`}
+      >
+        {balance === 0 ? "OK" : formatearBalance(balance)}
+      </div>
+    );
+  })()}
 </button>
+
 
 
   {/* HOVER ACCIONES */}
@@ -709,24 +758,29 @@ const cambiarMes = (delta: number) => {
         px-2
       "
     >
-      <button
-        onClick={(e) => {
-          e.stopPropagation();
-          setModoModal("JORNADAS");
-          setDiaActivo(dia ?? null);
-        }}
-        className="
-          text-[11px]
-          py-1
-          rounded-md
-          bg-white
-          hover:bg-slate-100
-          cursor-pointer
-          w-full
-        "
-      >
-        Jornadas
-      </button>
+     <button
+  onClick={(e) => {
+    e.stopPropagation();
+
+    console.log("🟩 CLICK JORNADAS - DIA:", dia);
+
+    setDiaActivo(dia ?? null);
+    setModoModal("JORNADAS");
+  }}
+  className="
+    text-[11px]
+    py-1
+    rounded-md
+    bg-white
+    hover:bg-slate-100
+    cursor-pointer
+    w-full
+  "
+>
+  Fichajes
+</button>
+
+
 
       <button
         onClick={(e) => {
@@ -1028,7 +1082,7 @@ const cambiarMes = (delta: number) => {
       {/* CABECERA */}
       <div className="flex items-center justify-between">
         <h2 className="text-lg font-semibold">
-          Jornadas · {formatFechaES(diaActivo.fecha)}
+          Fichajes · {formatFechaES(diaActivo.fecha)}
         </h2>
 
         <button
@@ -1104,35 +1158,35 @@ const cambiarMes = (delta: number) => {
       <div className="flex gap-3 pt-2">
         <button
   onClick={async () => {
-  const nuevos: { tipo: "ENTRADA" | "SALIDA"; hora: string }[] = [];
+    const nuevos: { tipo: "ENTRADA" | "SALIDA"; hora: string }[] = [];
 
-  if (jornadaManana.entrada)
-    nuevos.push({ tipo: "ENTRADA", hora: jornadaManana.entrada });
-  if (jornadaManana.salida)
-    nuevos.push({ tipo: "SALIDA", hora: jornadaManana.salida });
+    if (jornadaManana.entrada)
+      nuevos.push({ tipo: "ENTRADA", hora: jornadaManana.entrada });
+    if (jornadaManana.salida)
+      nuevos.push({ tipo: "SALIDA", hora: jornadaManana.salida });
 
-  if (jornadaTarde.entrada)
-    nuevos.push({ tipo: "ENTRADA", hora: jornadaTarde.entrada });
-  if (jornadaTarde.salida)
-    nuevos.push({ tipo: "SALIDA", hora: jornadaTarde.salida });
+    if (jornadaTarde.entrada)
+      nuevos.push({ tipo: "ENTRADA", hora: jornadaTarde.entrada });
+    if (jornadaTarde.salida)
+      nuevos.push({ tipo: "SALIDA", hora: jornadaTarde.salida });
 
-  
+    await api.post("/crm/fichajes", {
+      empleadoId,
+      fecha: diaActivo.fecha,
+      fichajes: nuevos,
+    });
 
-  await api.post("/crm/fichajes", {
-    empleadoId,
-    fecha: diaActivo?.fecha,
-    fichajes: nuevos,
-  });
+    // 🔴 CLAVE
+    await cargarHorario();
 
-  cargarHorario();        // ✅ AÑADIR
-  setModoModal(null);
-  setDiaActivo(null);
-}}
-
+    setModoModal(null);
+    setDiaActivo(null);
+  }}
   className="flex-1 bg-slate-900 text-white rounded-xl py-2 text-sm hover:bg-slate-800 cursor-pointer"
 >
   Guardar fichajes
 </button>
+
 
 
         <button
