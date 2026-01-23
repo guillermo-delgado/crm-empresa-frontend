@@ -125,11 +125,11 @@ const fichar = async () => {
     return `${h} h ${m} min`;
   };
 
-  const obtenerSaludo = (nombre: string) => {
-  const hora = new Date().getHours();
-  const saludo = hora < 14 ? "Buenos días" : "Buenas tardes";
-  return `${saludo}, ${nombre}`;
-};
+//   const obtenerSaludo = (nombre: string) => {
+//   const hora = new Date().getHours();
+//   const saludo = hora < 14 ? "Buenos días" : "Buenas tardes";
+//   return `${saludo}, ${nombre}`;
+// };
 
   if (loading) {
     return (
