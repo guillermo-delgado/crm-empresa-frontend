@@ -54,22 +54,39 @@ export default function ProtectedRoute({
   }
 
   /* ======================================================
-     👑 ADMIN → ACCESO TOTAL
+     👑 ADMIN → NUNCA PASA POR LÓGICA LABORAL
   ====================================================== */
-  useEffect(() => {
-    if (parsedUser.role === "admin") {
-      setEnJornada(true);
-      setLoading(false);
-      return;
+  if (parsedUser.role === "admin") {
+    // Si intenta entrar en laboral, lo mandamos al CRM
+    if (location.pathname.startsWith("/laboral")) {
+      return (
+        <Navigate
+          to="/crm/libro-ventas"
+          replace
+        />
+      );
     }
 
-    /* ======================================================
-       👤 EMPLEADO → COMPROBAR JORNADA REAL (BACKEND)
-    ====================================================== */
+    // Rutas solo admin
+    if (adminOnly && parsedUser.role !== "admin") {
+      return (
+        <Navigate
+          to="/crm/libro-ventas"
+          replace
+        />
+      );
+    }
+
+    return <>{children}</>;
+  }
+
+  /* ======================================================
+     👤 EMPLEADO → COMPROBAR JORNADA REAL (BACKEND)
+  ====================================================== */
+  useEffect(() => {
     const checkHorario = async () => {
       try {
         const res = await api.get("/horario/hoy");
-
         setEnJornada(res.data?.estado === "DENTRO");
       } catch {
         setEnJornada(false);
@@ -79,7 +96,7 @@ export default function ProtectedRoute({
     };
 
     checkHorario();
-  }, [parsedUser.role]);
+  }, []);
 
   if (loading) {
     return <div className="p-6">Cargando…</div>;
