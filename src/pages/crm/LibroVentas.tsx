@@ -104,15 +104,15 @@ const solicitudesOrdenadas = useMemo(() => {
 
 
   const [ventas, setVentas] = useState<VentaAPI[]>([]);
-  useEffect(() => {
-  if (isAdmin) return;
+//   useEffect(() => {
+//   if (isAdmin) return;
 
-  const pendientes = ventas.filter(
-    v => v.estadoRevision === "pendiente" || v.estadoRevision === "aceptada" || v.estadoRevision === "rechazada"
-  ).length;
+//   const pendientes = ventas.filter(
+//     v => v.estadoRevision === "pendiente" || v.estadoRevision === "aceptada" || v.estadoRevision === "rechazada"
+//   ).length;
 
-  setRevisionCount(pendientes);
-}, [ventas, isAdmin]);
+//   setRevisionCount(pendientes);
+// }, [ventas, isAdmin]);
 
   const [loading, setLoading] = useState(false);
 
@@ -132,14 +132,13 @@ const [ventaAEliminar, setVentaAEliminar] = useState<VentaAEliminar | null>(null
 const cargarSolicitudes = async () => {
   try {
     const res = await api.get("/solicitudes");
-    const total = res.data?.length || 0;
-
     setSolicitudes(res.data || []);
-    setRevisionCount(total); // 🔔 ÚNICA fuente del badge
+    setRevisionCount(res.data.length); // 🔔 ÚNICO sitio
   } catch {
     setRevisionCount(0);
   }
 };
+
 
 
 
@@ -204,18 +203,23 @@ const onVentaEliminada = ({ ventaId }: any) => {
 const onSolicitudCreada = ({ ventaId }: any) => {
   if (!ventaId) return;
 
-  setVentas(prev =>
-    prev.map(v =>
-      v._id === ventaId
-        ? { ...v, estadoRevision: "pendiente" }
-        : v
-    )
-  );
+  // 👤 EMPLEADO → SOLO color amarillo
+  if (!isAdmin) {
+    setVentas(prev =>
+      prev.map(v =>
+        v._id === ventaId
+          ? { ...v, estadoRevision: "pendiente" }
+          : v
+      )
+    );
+  }
 
+  // 👑 ADMIN → refresca badge real
   if (isAdmin) {
-    cargarSolicitudes(); // ✅ backend manda
+    cargarSolicitudes();
   }
 };
+
 
 
 
@@ -223,7 +227,7 @@ const onSolicitudCreada = ({ ventaId }: any) => {
 const onSolicitudResuelta = ({ ventaId, estado }: any) => {
   if (!ventaId || !estado) return;
 
-  // 👤 EMPLEADO → SOLO feedback visual
+  // 👤 EMPLEADO → color + badge
   if (!isAdmin) {
     setVentas(prev =>
       prev.map(v =>
@@ -232,13 +236,18 @@ const onSolicitudResuelta = ({ ventaId, estado }: any) => {
           : v
       )
     );
+
+    // 🔔 BADGE SOLO AQUÍ
+    setRevisionCount(1);
   }
 
-  // 👑 ADMIN → refresca solicitudes reales
+  // 👑 ADMIN → badge real
   if (isAdmin) {
     cargarSolicitudes();
   }
 };
+
+
 
 
 
@@ -257,8 +266,8 @@ const onSolicitudResuelta = ({ ventaId, estado }: any) => {
   socket.on("VENTA_ACTUALIZADA", onVentaActualizada);
 socket.on("VENTA_ELIMINADA", onVentaEliminada);
 
-  socket.on("SOLICITUD_CREADA", onSolicitudCreada);
-  socket.on("SOLICITUD_RESUELTA", onSolicitudResuelta);
+socket.on("SOLICITUD_CREADA", onSolicitudCreada);
+socket.on("SOLICITUD_RESUELTA", onSolicitudResuelta);
 
  
 
@@ -524,12 +533,17 @@ onClearRevision={async (row) => {
 
   setVentas(prev =>
     prev.map(v =>
-      v._id === row._id ? { ...v, estadoRevision: null } : v
+      v._id === row._id
+        ? { ...v, estadoRevision: null }
+        : v
     )
   );
 
-  // ❌ NUNCA tocar badge aquí
+  // 👉 AQUÍ, JUSTO DEBAJO
+  setRevisionCount(0);
 }}
+
+
 
 
 
