@@ -18,6 +18,7 @@ type FormState = {
   ramo: string;
   numeroPoliza: string;
   tomador: string;
+  documentoFiscal: string;
   primaNeta: string;
   formaPago: string;
   actividad: string;
@@ -108,6 +109,7 @@ const [form, setForm] = useState<FormState & {
   ramo: "",
   numeroPoliza: "",
   tomador: "",
+  documentoFiscal: "",
   primaNeta: "",
   formaPago: "",
   actividad: "",
@@ -181,6 +183,7 @@ useEffect(() => {
     ramo: initialData.ramo || "",
     numeroPoliza: initialData.numeroPoliza || "",
     tomador: initialData.tomador || "",
+    documentoFiscal: initialData.documentoFiscal || "",
     primaNeta: initialData.primaNeta?.toString() || "",
     formaPago: initialData.formaPago || "",
     actividad: initialData.actividad || "",
@@ -215,6 +218,17 @@ const handleSubmit = (e: React.FormEvent) => {
   if (!onSubmit) return;
 
   const { createdByLabel, ...data } = form;
+
+    // 🛑 VALIDACIÓN SEGURA NIF / NIE / CIF
+  if (
+    data.documentoFiscal !== undefined &&
+    data.documentoFiscal.trim() !== "" &&
+    data.documentoFiscal.trim().length < 9
+  ) {
+    alert("El NIF / NIE / CIF no es válido");
+    return;
+  }
+
 
   onSubmit({
     ...data,
@@ -370,6 +384,28 @@ const handleSubmit = (e: React.FormEvent) => {
 )}
         </Field>
 
+<Field label="N.I.F / N.I.E / C.I.F">
+  <input
+    name="documentoFiscal"
+    value={form.documentoFiscal}
+    onChange={handleChange}
+    className={`input cursor-pointer ${
+      isChanged("documentoFiscal" as FormField)
+        ? "border-red-500 ring-1 ring-red-400"
+        : ""
+    }`}
+    placeholder="12345678Z / B12345678"
+    required
+  />
+
+  {isChanged("documentoFiscal" as FormField) && originalData && (
+    <p className="text-red-600 text-xs mt-1">
+      Antes: {originalData.documentoFiscal ?? "-"}
+    </p>
+  )}
+</Field>
+
+
         <Field label="Tomador">
           <input
             name="tomador"
@@ -439,23 +475,24 @@ const handleSubmit = (e: React.FormEvent) => {
   >
     <option value="">Selecciona actividad</option>
 
-    {/* Para todos los usuarios */}
+    {/* Visible para TODOS */}
     <option value="RECOMENDADO">RECOMENDADO</option>
     <option value="SGC">SGC</option>
     <option value="OFICINA">OFICINA</option>
     <option value="TELEFONICO">TELEFONICO</option>
-    <option value="INTERNET">INTERNET</option>
     <option value="RED PERSONAL">RED PERSONAL</option>
 
-    {/* Solo Admin */}
+    {/* EXCLUSIVO ADMIN */}
     {isAdmin && (
       <>
+        <option value="INTERNET">INTERNET</option>
         <option value="FINCAS">ADMINISTRADOR DE FINCAS</option>
         <option value="COLABORADORES">COLABORADORES</option>
       </>
     )}
   </select>
 </Field>
+
 
 
        <Field label="Observaciones">

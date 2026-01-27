@@ -9,64 +9,87 @@ type Props = {
   onAseguradoraChange: (value: string) => void;
 };
 
+const CARD = "bg-white border border-slate-200 rounded-[12px]";
+
 export default function ProduccionPorRamo({
   data,
   aseguradora,
   onAseguradoraChange,
 }: Props) {
   return (
-    <div className="bg-white border rounded-lg p-4 space-y-4">
+    <div className={CARD}>
 
-      {/* CABECERA */}
-      <div className="flex justify-between items-center">
-        <h3 className="text-sm font-semibold text-slate-700">
-          Producción por ramo
-        </h3>
+      {/* HEADER */}
+      <div className="px-4 py-3 border-b border-slate-200 flex justify-between items-center">
+        <div>
+          <h3 className="text-sm font-semibold text-slate-700">
+            Producción por ramo
+          </h3>
+          <p className="text-xs text-slate-400">
+            Total agrupado por tipo de seguro
+          </p>
+        </div>
 
         <select
           value={aseguradora}
           onChange={(e) => onAseguradoraChange(e.target.value)}
-          className="border rounded px-3 py-2 text-sm cursor-pointer"
+          className="
+            border border-slate-300 rounded-md
+            px-3 py-1.5 text-sm
+            cursor-pointer bg-white
+            focus:outline-none focus:ring-2 focus:ring-slate-300
+          "
         >
-          <option value="ALL">Todas las aseguradoras</option>
+          <option value="ALL">Todas</option>
           <option value="Mapfre">Mapfre</option>
           <option value="Verti">Verti</option>
         </select>
       </div>
 
-      {/* TABLA */}
-      <table className="w-full text-sm">
-        <thead className="bg-slate-100 text-slate-600">
-          <tr>
-            <th className="px-3 py-2 text-left">Ramo</th>
-            <th className="px-3 py-2 text-right">Producción</th>
-          </tr>
-        </thead>
+      {/* CONTENIDO */}
+      <div className="px-4 py-3">
+        <table className="w-full text-sm">
 
-        <tbody>
-          {data.map((r) => (
-            <tr key={r.ramo} className="border-t">
-              <td className="px-3 py-2 font-medium">
-                {r.ramo}
-              </td>
-              <td className="px-3 py-2 text-right font-semibold">
-                {r.total.toFixed(2)} €
-              </td>
-            </tr>
-          ))}
-
-          {data.length === 0 && (
+          <thead className="text-slate-500">
             <tr>
-              <td
-                colSpan={2}
-                className="px-3 py-4 text-center text-slate-400"
-              >
-                No hay datos para este filtro
-              </td>
+              <th className="py-2 text-left font-medium">
+                Ramo
+              </th>
+              <th className="py-2 text-right font-medium">
+                Producción
+              </th>
             </tr>
-          )}
-        </tbody>
-      </table>
+          </thead>
+
+          <tbody>
+            {data.map((r) => (
+              <tr
+                key={r.ramo}
+                className="border-t border-slate-100 hover:bg-slate-50 transition"
+              >
+                <td className="py-2 font-medium text-slate-700">
+                  {r.ramo}
+                </td>
+                <td className="py-2 text-right font-semibold text-slate-900">
+                  {r.total.toFixed(2)} €
+                </td>
+              </tr>
+            ))}
+
+            {data.length === 0 && (
+              <tr>
+                <td
+                  colSpan={2}
+                  className="py-6 text-center text-slate-400"
+                >
+                  No hay datos para este filtro
+                </td>
+              </tr>
+            )}
+          </tbody>
+
+        </table>
+      </div>
     </div>
   );
 }

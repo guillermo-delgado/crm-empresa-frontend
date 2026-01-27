@@ -4,6 +4,8 @@ import VentasTable from "../../components/crm/VentasTable";
 import InfoModal from "../../components/common/InfoModal";
 import EditVentaModal from "../../components/ventas/EditVentaModal";
 import ConfirmModal from "../../components/common/ConfirmModal";
+import VentasGlobalSearch from "../../components/crm/VentasGlobalSearch";
+
 import api from "../../services/api";
 import { useNavigate, useOutletContext } from "react-router-dom";
 import { ChevronLeft, ChevronRight } from "lucide-react";
@@ -57,6 +59,7 @@ type VentaAEliminar = VentaAPI & {
 type LayoutContext = {
   setRevisionCount: React.Dispatch<React.SetStateAction<number>>;
 };
+const CARD = "bg-white border border-slate-200 rounded-[12px] ";
 
 export default function LibroVentas() {
   const { setRevisionCount } = useOutletContext<LayoutContext>();
@@ -79,6 +82,16 @@ try {
   const now = new Date();
   const [mes, setMes] = useState(now.getMonth() + 1);
   const [anio, setAnio] = useState(now.getFullYear());
+
+// BUSCADOR
+  const [search, setSearch] = useState("");
+  const searchActive = search.trim().length >= 2;
+
+const [ventasBusqueda, setVentasBusqueda] = useState<VentaAPI[] | null>(null);
+const [loadingBusqueda, setLoadingBusqueda] = useState(false);
+
+
+
   // 📅 Límites de periodo (empleados)
 const hoy = new Date();
 const minPeriodo = new Date(hoy.getFullYear(), hoy.getMonth(), 1);
@@ -99,6 +112,30 @@ const solicitudesOrdenadas = useMemo(() => {
 
 
 
+useEffect(() => {
+  if (!isAdmin) return;
+
+  if (search.trim().length < 2) {
+    setVentasBusqueda(null);
+    return;
+  }
+
+  const timeout = setTimeout(async () => {
+    try {
+      setLoadingBusqueda(true);
+      const res = await api.get(
+        `/ventas/buscar?q=${encodeURIComponent(search)}`
+      );
+      setVentasBusqueda(res.data || []);
+    } catch {
+      setVentasBusqueda([]);
+    } finally {
+      setLoadingBusqueda(false);
+    }
+  }, 300); // debounce real
+
+  return () => clearTimeout(timeout);
+}, [search, isAdmin]);
 
 
 
@@ -284,19 +321,27 @@ socket.off("SOLICITUD_RESUELTA", onSolicitudResuelta);
 // }, [isAdmin, mes, anio]);
 
 
+const ventasBase = useMemo(() => {
+  if (isAdmin && ventasBusqueda !== null) {
+    return ventasBusqueda;
+  }
+  return ventas;
+}, [isAdmin, ventasBusqueda, ventas]);
 
 
   /* =========================
      FILTROS
   ========================= */
-  const ventasFiltradas = useMemo(() => {
-    return ventas.filter((v) => {
-      if (aseguradora !== "ALL" && v.aseguradora !== aseguradora) return false;
-      if (usuario !== "ALL" && v.createdBy?.nombre !== usuario) return false;
-      if (ramo !== "ALL" && v.ramo !== ramo) return false;
-      return true;
-    });
-  }, [ventas, aseguradora, usuario, ramo]);
+const ventasFiltradas = useMemo(() => {
+  return ventasBase.filter((v) => {
+    if (aseguradora !== "ALL" && v.aseguradora !== aseguradora) return false;
+    if (usuario !== "ALL" && v.createdBy?.nombre !== usuario) return false;
+    if (ramo !== "ALL" && v.ramo !== ramo) return false;
+    return true;
+  });
+}, [ventasBase, aseguradora, usuario, ramo]);
+
+
 
   /* =========================
      KPIs
@@ -431,7 +476,7 @@ socket.off("SOLICITUD_RESUELTA", onSolicitudResuelta);
 />
 
 
-        <div className="bg-white border rounded-lg p-4">
+       <div className={`${CARD} p-6`}>
           <h4 className="text-xs font-semibold text-slate-500 mb-2">
             Producción por ramo
           </h4>
@@ -456,13 +501,29 @@ socket.off("SOLICITUD_RESUELTA", onSolicitudResuelta);
         </div>
       </div>
 
-      {/* FILTROS */}
-{/* FILTROS (solo admin) */}
-{isAdmin && (
-  <div className="bg-white border rounded-lg p-4 flex gap-6 flex-wrap items-end">
 
-    {/* 👑 ADMIN: filtros completos */}
-    <>
+{/* 🔍 BUSCADOR + FILTROS (ADMIN) */}
+{isAdmin && (
+  <div className={`${CARD} p-6 space-y-4`}>
+
+    {/* 🔍 BÚSQUEDA GLOBAL */}
+    <VentasGlobalSearch
+      value={search}
+      onChange={setSearch}
+    />
+
+    {searchActive && (
+      <p className="text-xs text-slate-500">
+        🔍 Búsqueda activa · Se ignoran mes, año y filtros
+      </p>
+    )}
+
+    {/* 🎛 FILTROS */}
+    <div
+      className={`flex gap-6 flex-wrap items-end transition-opacity duration-200 ${
+        searchActive ? "opacity-50 pointer-events-none" : ""
+      }`}
+    >
       <FiltroMes
         mes={mes}
         anio={anio}
@@ -497,10 +558,14 @@ socket.off("SOLICITUD_RESUELTA", onSolicitudResuelta);
         setValue={setUsuario}
         options={usuarios}
       />
-    </>
+    </div>
 
   </div>
 )}
+
+
+
+
 
 
 
@@ -508,7 +573,11 @@ socket.off("SOLICITUD_RESUELTA", onSolicitudResuelta);
      {!loading && (
   <div className="w-full overflow-x-auto">
     {/* 🔒 Evita que la tabla se aplaste en móvil */}
-    <div className="min-w-[1100px]">
+    <div
+  className="min-w-[1100px] transition-opacity duration-200 ease-out"
+  key={ventasFiltradas.length}
+>
+
   <VentasTable
     ventas={ventasFiltradas.map(v => ({
       _id: v._id,

@@ -41,6 +41,7 @@ const NuevaVenta = () => {
     aseguradora: "",
     ramo: "",
     numeroPoliza: "",
+    documentoFiscal: "",
     tomador: "",
     primaNeta: "",
     formaPago: "",
@@ -184,6 +185,40 @@ const NuevaVenta = () => {
               </select>
             </Field>
 
+ <Field label="N.I.F / N.I.E / C.I.F">
+  <input
+    name="documentoFiscal"
+    value={form.documentoFiscal}
+    onChange={handleChange}
+    className="input cursor-pointer"
+    placeholder="12345678Z / B12345678"
+    required
+  />
+</Field>
+
+
+            <Field label="Número de póliza">
+              <input
+                name="numeroPoliza"
+                value={form.numeroPoliza}
+                onChange={handleChange}
+                className="input cursor-pointer"
+              />
+            </Field>
+
+           
+
+
+            <Field label="Tomador">
+              <input
+                name="tomador"
+                value={form.tomador}
+                onChange={handleChange}
+                className="input cursor-pointer"
+              />
+            </Field>
+
+            
             {/* RAMO */}
             <Field label="Ramo">
               <input
@@ -200,24 +235,6 @@ const NuevaVenta = () => {
                   <option key={r} value={r} />
                 ))}
               </datalist>
-            </Field>
-
-            <Field label="Número de póliza">
-              <input
-                name="numeroPoliza"
-                value={form.numeroPoliza}
-                onChange={handleChange}
-                className="input cursor-pointer"
-              />
-            </Field>
-
-            <Field label="Tomador">
-              <input
-                name="tomador"
-                value={form.tomador}
-                onChange={handleChange}
-                className="input cursor-pointer"
-              />
             </Field>
 
             <Field label="Prima neta (€)">
