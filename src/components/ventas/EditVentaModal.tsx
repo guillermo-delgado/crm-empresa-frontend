@@ -15,7 +15,7 @@ type Props = {
 export default function EditVentaModal({
   venta,
   onClose,
-  onSaved,
+ 
 }: Props) {
   const ventaData = venta?.data ?? venta;
   const changedFields: string[] = venta?.changedFields ?? [];
