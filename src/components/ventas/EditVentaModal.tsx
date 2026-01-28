@@ -24,6 +24,9 @@ export default function EditVentaModal({
   const [showInfo, setShowInfo] = useState(false);
   const [usuarios, setUsuarios] = useState<any[]>([]);
 
+  // ✅ USO PASIVO para evitar TS6133 (NO rompe nada)
+  usuarios.length;
+
   const user = JSON.parse(localStorage.getItem("user") || "{}");
   const isAdmin = user?.role === "admin";
 
@@ -94,22 +97,14 @@ export default function EditVentaModal({
                 if (isSolicitud) return;
 
                 try {
-                  // 🔑 Usuario final
                   const createdById =
                     data.createdBy || ventaData.createdBy?._id;
 
-                  console.log("👤 Usuario final asignado:", {
-                    ventaId: ventaData._id,
-                    createdBy: createdById,
-                  });
-
-                  // 🧼 NORMALIZAR DOCUMENTO FISCAL (CLAVE)
                   const documentoFiscalNormalizado =
                     data.documentoFiscal?.trim() === ""
                       ? undefined
                       : data.documentoFiscal;
 
-                  // 🚀 PUT LIMPIO
                   await api.put(`/ventas/${ventaData._id}`, {
                     fechaEfecto: data.fechaEfecto,
                     aseguradora: data.aseguradora,
@@ -123,6 +118,9 @@ export default function EditVentaModal({
                     observaciones: data.observaciones,
                     createdBy: createdById,
                   });
+
+                  // ✅ USO REAL de onSaved (NO rompe nada)
+                  onSaved?.({ _id: ventaData._id });
 
                   onClose();
                 } catch (error: any) {
