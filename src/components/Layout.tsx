@@ -1,7 +1,8 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Menu } from "lucide-react";
 import { Outlet } from "react-router-dom";
 import Sidebar from "./Sidebar";
+import api from "../services/api"; // ⬅️ IMPORTANTE
 
 export default function Layout() {
   const [collapsed, setCollapsed] = useState(true);
@@ -9,6 +10,25 @@ export default function Layout() {
 
   // 🔔 contador global REAL
   const [revisionCount, setRevisionCount] = useState(0);
+
+  // 🔔 CARGAR CONTADOR AL RECARGAR (EMPLEADO)
+  useEffect(() => {
+    const user = JSON.parse(localStorage.getItem("user") || "{}");
+    const isAdmin = user?.role === "admin";
+
+    if (isAdmin) return;
+
+    const cargarRevisiones = async () => {
+      try {
+        const res = await api.get("/ventas/revisiones-pendientes");
+        setRevisionCount(res.data?.count ?? 0);
+      } catch {
+        setRevisionCount(0);
+      }
+    };
+
+    cargarRevisiones();
+  }, []);
 
   return (
     <div className="relative min-h-screen bg-slate-100">
@@ -49,7 +69,7 @@ export default function Layout() {
           collapsed ? "ml-16" : "ml-64"
         }`}
       >
-        {/* 👇 ESTO ES LA CLAVE */}
+        {/* 👇 hijos pueden modificar el contador */}
         <Outlet context={{ setRevisionCount }} />
       </main>
     </div>

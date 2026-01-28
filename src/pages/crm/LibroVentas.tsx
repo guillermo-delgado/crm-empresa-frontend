@@ -206,7 +206,21 @@ useEffect(() => {
   cargarSolicitudes();
 }, [isAdmin]);
 
+// 🔔 Cargar revisiones pendientes al entrar (EMPLEADO)
+useEffect(() => {
+  if (isAdmin) return;
 
+  const cargarRevisionesEmpleado = async () => {
+    try {
+      const res = await api.get("/ventas/revisiones-pendientes");
+      setRevisionCount(res.data?.count ?? 0);
+    } catch {
+      setRevisionCount(0);
+    }
+  };
+
+  cargarRevisionesEmpleado();
+}, [isAdmin]);
 
 // 3️⃣ Socket tiempo real
 useEffect(() => {
