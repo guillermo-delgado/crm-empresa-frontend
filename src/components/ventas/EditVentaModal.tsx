@@ -6,23 +6,23 @@ import InfoModal from "../common/InfoModal";
 type Props = {
   venta: any;
   onClose: () => void;
-  // onSaved?: (patch?: {
-  //   _id: string;
-  //   estadoRevision?: "pendiente" | "aceptada" | "rechazada" | null;
-  // }) => void;
+  onSaved?: (patch?: {
+    _id: string;
+    estadoRevision?: "pendiente" | "aceptada" | "rechazada" | null;
+  }) => void;
 };
 
 export default function EditVentaModal({
   venta,
   onClose,
- 
+  onSaved,
 }: Props) {
   const ventaData = venta?.data ?? venta;
   const changedFields: string[] = venta?.changedFields ?? [];
   const originalData = venta?.original ?? null;
 
   const [showInfo, setShowInfo] = useState(false);
-
+  const [usuarios, setUsuarios] = useState<any[]>([]);
 
   const user = JSON.parse(localStorage.getItem("user") || "{}");
   const isAdmin = user?.role === "admin";
@@ -35,14 +35,14 @@ export default function EditVentaModal({
   const isDelete = changedFields.includes("__DELETE__");
 
   /* ===== CARGAR USUARIOS (ADMIN) ===== */
-  // useEffect(() => {
-  //   if (!isAdmin) return;
+  useEffect(() => {
+    if (!isAdmin) return;
 
-  //   api
-  //     .get("/users/asignables")
-  //     .then((res) => setUsuarios(res.data || []))
-  //     .catch(() => {});
-  // }, [isAdmin]);
+    api
+      .get("/users/asignables")
+      .then((res) => setUsuarios(res.data || []))
+      .catch(() => {});
+  }, [isAdmin]);
 
   return (
     <>
