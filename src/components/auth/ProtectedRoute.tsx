@@ -99,7 +99,7 @@ export default function ProtectedRoute({
   }, []);
 
   if (loading) {
-    return <div className="p-6">Cargando…</div>;
+    return;
   }
 
   /* ======================================================
