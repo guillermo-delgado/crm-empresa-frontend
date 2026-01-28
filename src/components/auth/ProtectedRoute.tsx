@@ -98,9 +98,14 @@ export default function ProtectedRoute({
     checkHorario();
   }, []);
 
-  if (loading) {
-    return;
-  }
+ if (loading) {
+  return (
+    <div className="min-h-screen flex items-center justify-center bg-slate-50">
+      <div className="w-32 h-[2px] bg-slate-300 rounded animate-pulse" />
+    </div>
+  );
+}
+
 
   /* ======================================================
      🚫 CORTAFUEGOS CRM (EMPLEADOS)
