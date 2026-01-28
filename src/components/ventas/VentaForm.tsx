@@ -40,27 +40,46 @@ type Usuario = {
   numma?: string;
 };
 
-function toInputDate(value?: string) {
+// Convierte cualquier formato a yyyy-mm-dd (para <input type="date">)
+export function toInputDate(value?: string) {
   if (!value) return "";
 
-  // yyyy-mm-dd → OK directo
+  // yyyy-mm-dd → ya válido
   if (/^\d{4}-\d{2}-\d{2}$/.test(value)) {
     return value;
   }
 
-  // dd/mm/yyyy
+  // dd/mm/yyyy → convertir
   if (value.includes("/")) {
     const [dd, mm, yyyy] = value.split("/");
-    return `${yyyy}-${mm.padStart(2, "0")}-${dd.padStart(2, "0")}`;
+    if (dd && mm && yyyy) {
+      return `${yyyy}-${mm.padStart(2, "0")}-${dd.padStart(2, "0")}`;
+    }
   }
 
-  // ISO completo
+  // ISO completo → cortar
   if (value.includes("T")) {
     return value.substring(0, 10);
   }
 
   return "";
 }
+
+// Formatea fechas para mostrar en "Antes:" → dd/mm/yyyy
+export function formatFecha(value?: string) {
+  if (!value) return "-";
+
+  // ISO o yyyy-mm-dd
+  if (value.includes("T") || /^\d{4}-\d{2}-\d{2}/.test(value)) {
+    const d = new Date(value);
+    if (isNaN(d.getTime())) return "-";
+    return d.toLocaleDateString("es-ES");
+  }
+
+  // Ya viene formateada
+  return value;
+}
+
 
 
 const ramosDisponibles = [
@@ -85,7 +104,7 @@ export default function VentaForm({
   submitLabel,
   onSubmit,
   onCancel,
-  changedFields = [],
+  // changedFields = [],
   hideActions = false,
 }: Props) {
 
@@ -137,12 +156,6 @@ const normalizeValue = (field: FormField, value: any) => {
 
 
 const isChanged = (field: FormField) => {
-  // 🟢 Caso 1: viene de solicitud (empleado)
-  if (changedFields.length > 0) {
-    return changedFields.includes(field);
-  }
-
-  // 🟢 Caso 2: edición normal (admin)
   if (!originalData) return false;
 
   const original = normalizeValue(field, originalData[field]);
@@ -150,9 +163,6 @@ const isChanged = (field: FormField) => {
 
   return original !== current;
 };
-
-
-
 
 
 
@@ -255,20 +265,19 @@ const handleSubmit = (e: React.FormEvent) => {
   value={form.fechaEfecto}
   onChange={handleChange}
   onClick={() => dateRef.current?.showPicker()}
-  className={`input cursor-pointer ${
-    isChanged("fechaEfecto" as FormField)
-      ? "border-red-500 ring-1 ring-red-400"
-      : ""
-  }`}
+  className="input cursor-pointer"
+
 />
 
  
 
- {isChanged("fechaEfecto" as FormField) && originalData && (
+{isChanged("fechaEfecto" as FormField) && originalData && (
   <p className="text-red-600 text-xs mt-1">
-    Antes: {originalData.fechaEfecto ?? "-"} 
-  </p>
+  Antes: {formatFecha(originalData.fechaEfecto)}
+</p>
+
 )}
+
 
 
 
@@ -389,11 +398,8 @@ const handleSubmit = (e: React.FormEvent) => {
     name="documentoFiscal"
     value={form.documentoFiscal}
     onChange={handleChange}
-    className={`input cursor-pointer ${
-      isChanged("documentoFiscal" as FormField)
-        ? "border-red-500 ring-1 ring-red-400"
-        : ""
-    }`}
+    className="input cursor-pointer"
+
     placeholder="12345678Z / B12345678"
     required
   />
@@ -429,11 +435,8 @@ const handleSubmit = (e: React.FormEvent) => {
   name="primaNeta"
   value={form.primaNeta}
   onChange={handleChange}
-  className={`input cursor-pointer ${
-    isChanged("primaNeta" as FormField)
-      ? "border-red-500 ring-1 ring-red-400"
-      : ""
-  }`}
+  className="input cursor-pointer"
+
 />
 
 {/* Prueba */}

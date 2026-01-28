@@ -24,9 +24,6 @@ export default function EditVentaModal({
   const [showInfo, setShowInfo] = useState(false);
   const [usuarios, setUsuarios] = useState<any[]>([]);
 
-  // ✅ USO PASIVO para evitar TS6133 (NO rompe nada)
-  usuarios.length;
-
   const user = JSON.parse(localStorage.getItem("user") || "{}");
   const isAdmin = user?.role === "admin";
 
@@ -37,7 +34,10 @@ export default function EditVentaModal({
 
   const isDelete = changedFields.includes("__DELETE__");
 
-  /* ===== CARGAR USUARIOS (ADMIN) ===== */
+  /* =========================
+     CARGAR USUARIOS (ADMIN)
+     (se mantiene por compatibilidad futura)
+  ========================= */
   useEffect(() => {
     if (!isAdmin) return;
 
@@ -100,35 +100,71 @@ export default function EditVentaModal({
                   const createdById =
                     data.createdBy || ventaData.createdBy?._id;
 
+                  // =========================
+                  // NORMALIZAR Y COMPARAR DNI
+                  // =========================
                   const documentoFiscalNormalizado =
                     data.documentoFiscal?.trim() === ""
                       ? undefined
-                      : data.documentoFiscal;
+                      : data.documentoFiscal?.trim();
 
-                  await api.put(`/ventas/${ventaData._id}`, {
+                  const documentoFiscalOriginal =
+                    ventaData.documentoFiscal?.trim() || "";
+
+                  const documentoFiscalHaCambiado =
+                    documentoFiscalNormalizado !== documentoFiscalOriginal;
+
+                  // =========================
+                  // CONSTRUIR PAYLOAD LIMPIO
+                  // =========================
+                  const payload: any = {
                     fechaEfecto: data.fechaEfecto,
                     aseguradora: data.aseguradora,
                     ramo: data.ramo,
                     numeroPoliza: data.numeroPoliza,
-                    documentoFiscal: documentoFiscalNormalizado,
                     tomador: data.tomador,
                     primaNeta: Number(data.primaNeta),
                     formaPago: data.formaPago,
                     actividad: data.actividad,
                     observaciones: data.observaciones,
                     createdBy: createdById,
-                  });
+                  };
 
-                  // ✅ USO REAL de onSaved (NO rompe nada)
+                  // 🔑 SOLO enviar DNI si realmente cambia
+                  if (documentoFiscalHaCambiado) {
+                    payload.documentoFiscal =
+                      documentoFiscalNormalizado;
+                  }
+
+                  await api.put(
+                    `/ventas/${ventaData._id}`,
+                    payload
+                  );
+
+                  // 🔔 Notificar al padre (LibroVentas)
                   onSaved?.({ _id: ventaData._id });
 
                   onClose();
-                } catch (error: any) {
-                  console.error("❌ Error editando venta:", {
-                    status: error.response?.status,
-                    data: error.response?.data,
-                  });
-                }
+              } catch (error: any) {
+  const status = error.response?.status;
+
+  // 🟡 EMPLEADO → 403 = solicitud enviada correctamente
+  if (status === 403) {
+    console.info("🟡 Solicitud enviada para revisión (403 esperado)");
+
+    // Cerrar modal igualmente
+    onClose();
+
+    return;
+  }
+
+  // 🔴 Error real
+  console.error("❌ Error editando venta:", {
+    status,
+    data: error.response?.data,
+  });
+}
+
               }}
             />
           </div>
@@ -186,7 +222,9 @@ export default function EditVentaModal({
                     e.preventDefault();
                     e.stopPropagation();
 
-                    await api.delete(`/ventas/${ventaData._id}`);
+                    await api.delete(
+                      `/ventas/${ventaData._id}`
+                    );
                     await api.post(
                       `/solicitudes/${venta.solicitudId}/aprobar`
                     );

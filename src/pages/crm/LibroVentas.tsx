@@ -5,23 +5,20 @@ import InfoModal from "../../components/common/InfoModal";
 import EditVentaModal from "../../components/ventas/EditVentaModal";
 import ConfirmModal from "../../components/common/ConfirmModal";
 import VentasGlobalSearch from "../../components/crm/VentasGlobalSearch";
-
+import VentasTableSkeleton from "../../components/crm/skeletons/VentasTableSkeleton";
+import KPICardSkeleton from "../../components/crm/skeletons/KPICardSkeleton";
+import ProduccionRamoSkeleton from "../../components/crm/skeletons/ProduccionRamoSkeleton";
+import VentasSearchSkeleton from "../../components/crm/skeletons/VentasSearchSkeleton";
+import PeriodoSelectorSkeleton from "../../components/crm/skeletons/PeriodoSelectorSkeleton";
+import { registerVentasSocketHandlers } from "../../services/ventasSocketHandlers";
 import api from "../../services/api";
 import { useNavigate, useOutletContext } from "react-router-dom";
 import { ChevronLeft, ChevronRight } from "lucide-react";
-
-
-
-
-
-
-
-/* 🔔 SOCKET */
-import { getSocket } from "../../services/socket";
-
 import * as XLSX from "xlsx";
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
+import { getSocket } from "../../services/socket";
+
 
 type VentaAPI = {
   _id: string;
@@ -216,111 +213,19 @@ useEffect(() => {
   const socket = getSocket();
   if (!socket) return;
 
-const onVentaActualizada = (venta: any) => {
-  if (!venta?._id) return;
+  const cleanup = registerVentasSocketHandlers({
+    socket,
+    isAdmin,
+    setVentas,
+    setRevisionCount,
+    cargarSolicitudes,
+  });
 
-  setVentas(prev =>
-    prev.map(v =>
-      v._id === venta._id ? { ...v, ...venta } : v
-    )
-  );
-};
-
-const onVentaEliminada = ({ ventaId }: any) => {
-  if (!ventaId) return;
-
-  setVentas(prev =>
-    prev.filter(v => v._id !== ventaId)
-  );
-};
+  return cleanup;
+}, [isAdmin]);
 
 
 
-
-
-
-const onSolicitudCreada = ({ ventaId }: any) => {
-  if (!ventaId) return;
-
-  // 👤 EMPLEADO → SOLO color amarillo
-  if (!isAdmin) {
-    setVentas(prev =>
-      prev.map(v =>
-        v._id === ventaId
-          ? { ...v, estadoRevision: "pendiente" }
-          : v
-      )
-    );
-  }
-
-  // 👑 ADMIN → refresca badge real
-  if (isAdmin) {
-    cargarSolicitudes();
-  }
-};
-
-
-
-
-
-const onSolicitudResuelta = ({ ventaId, estado }: any) => {
-  if (!ventaId || !estado) return;
-
-  // 👤 EMPLEADO → color + badge
-  if (!isAdmin) {
-    setVentas(prev =>
-      prev.map(v =>
-        v._id === ventaId
-          ? { ...v, estadoRevision: estado }
-          : v
-      )
-    );
-
-    // 🔔 BADGE SOLO AQUÍ
-    setRevisionCount(1);
-  }
-
-  // 👑 ADMIN → badge real
-  if (isAdmin) {
-    cargarSolicitudes();
-  }
-};
-
-
-
-
-
-
-
-
-
-
-
-
-
-  socket.on("VENTA_CREADA", (data) => {
-  console.log("🟣 EVENTO VENTA_CREADA RECIBIDO:", data);
-});
-
-  socket.on("VENTA_ACTUALIZADA", onVentaActualizada);
-socket.on("VENTA_ELIMINADA", onVentaEliminada);
-
-socket.on("SOLICITUD_CREADA", onSolicitudCreada);
-socket.on("SOLICITUD_RESUELTA", onSolicitudResuelta);
-
- 
-
-
-  return () => {
-    socket.off("VENTA_CREADA");
-socket.off("VENTA_ACTUALIZADA", onVentaActualizada);
-socket.off("VENTA_ELIMINADA", onVentaEliminada);
-socket.off("SOLICITUD_CREADA", onSolicitudCreada);
-socket.off("SOLICITUD_RESUELTA", onSolicitudResuelta);
-
-  };
-  }, [isAdmin]);
-// }, [isAdmin, mes, anio]);
 
 
 const ventasBase = useMemo(() => {
@@ -466,67 +371,21 @@ const ventasFiltradas = useMemo(() => {
 
 
       {/* KPIs */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        <KPICard title="Producción total" value={`${produccionTotal.toFixed(2)} €`} />
-        <PeriodoSelector
-  mes={mes}
-  anio={anio}
-  setMes={setMes}
-  setAnio={setAnio}
-  minPeriodo={minPeriodo}
-  maxPeriodo={maxPeriodo}
-/>
+     <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+  {loading ? (
+    <>
+      <KPICardSkeleton />
+      <PeriodoSelectorSkeleton />
+      <ProduccionRamoSkeleton />
+    </>
+  ) : (
+    <>
+      <KPICard
+        title="Producción total"
+        value={`${produccionTotal.toFixed(2)} €`}
+      />
 
-
-       <div className={`${CARD} p-6`}>
-          <h4 className="text-xs font-semibold text-slate-500 mb-2">
-            Producción por ramo
-          </h4>
-
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-
-            {Object.entries(produccionPorRamo).map(([r, total]) => (
-  <div
-    key={r}
-    className="border border-slate-200 rounded-md px-3 py-2"
-  >
-    <p className="text-xs text-slate-500 truncate">
-      {r}
-    </p>
-    <p className="text-sm font-semibold text-slate-800 mt-1">
-      {total.toFixed(2)} €
-    </p>
-  </div>
-))}
-
-          </div>
-        </div>
-      </div>
-
-
-{/* 🔍 BUSCADOR + FILTROS (ADMIN) */}
-{isAdmin && (
-  <div className={`${CARD} p-6 space-y-4`}>
-
-    {/* 🔍 BÚSQUEDA GLOBAL */}
-    <VentasGlobalSearch
-      value={search}
-      onChange={setSearch}
-    />
-
-    {searchActive && (
-      <p className="text-xs text-slate-500">
-        🔍 Búsqueda activa · Se ignoran mes, año y filtros
-      </p>
-    )}
-
-    {/* 🎛 FILTROS */}
-    <div
-      className={`flex gap-6 flex-wrap items-end transition-opacity duration-200 ${
-        searchActive ? "opacity-50 pointer-events-none" : ""
-      }`}
-    >
-      <FiltroMes
+      <PeriodoSelector
         mes={mes}
         anio={anio}
         setMes={setMes}
@@ -535,173 +394,200 @@ const ventasFiltradas = useMemo(() => {
         maxPeriodo={maxPeriodo}
       />
 
-      <FiltroAnio
-        anio={anio}
-        setAnio={setAnio}
-      />
+      <div className={`${CARD} p-6`}>
+        <h4 className="text-xs font-semibold text-slate-500 mb-2">
+          Producción por ramo
+        </h4>
 
-      <Select
-        label="Aseguradora"
-        value={aseguradora}
-        setValue={setAseguradora}
-        options={aseguradoras}
-      />
-
-      <Select
-        label="Ramo"
-        value={ramo}
-        setValue={setRamo}
-        options={ramos}
-      />
-
-      <Select
-        label="Usuario"
-        value={usuario}
-        setValue={setUsuario}
-        options={usuarios}
-      />
-    </div>
-
-  </div>
-)}
-
-
-
-
-
-
-
-      {/* TABLA */}
-     {!loading && (
-  <div className="w-full overflow-x-auto">
-    {/* 🔒 Evita que la tabla se aplaste en móvil */}
-    <div
-  className="min-w-[1100px] transition-opacity duration-200 ease-out"
-  key={ventasFiltradas.length}
->
-
-  <VentasTable
-    ventas={ventasFiltradas.map(v => ({
-      _id: v._id,
-      fecha: new Date(v.fechaEfecto).toLocaleDateString(),
-      poliza: v.numeroPoliza,
-      tomador: v.tomador,
-      aseguradora: v.aseguradora,
-      ramo: v.ramo,
-      prima: v.primaNeta,
-      usuario: v.createdBy?.nombre || "-",
-
-      // 🔔 NUEVO: estado visual (si no existe aún, será null)
-      estadoRevision: (v as any).estadoRevision ?? null,
-    }))}
-
-    // 🔑 NUEVO: necesario para que admin no vea colores
-    isAdmin={isAdmin}
-
-    // 🔔 NUEVO: limpiar color por fila (SIN sockets)
-onClearRevision={async (row) => {
-  await api.patch(`/ventas/${row._id}/marcar-revision-leida`);
-
-  setVentas(prev =>
-    prev.map(v =>
-      v._id === row._id
-        ? { ...v, estadoRevision: null }
-        : v
-    )
-  );
-
-  // 👉 AQUÍ, JUSTO DEBAJO
-  setRevisionCount(0);
-}}
-
-
-
-
-
-
-   onEdit={async (row) => {
-  const originalVenta = ventas.find(v => v._id === row._id);
-if (!originalVenta) return;
-
-// ✅ COPIA PROFUNDA — original JAMÁS se modifica
-const original = JSON.parse(JSON.stringify(originalVenta));
-
-let ventaInicial: any = JSON.parse(JSON.stringify(original));
-let changedFields: string[] = [];
-
-let solicitudId: string | undefined;
-
-if (original.estadoRevision === "pendiente") {
-  try {
-    const res = await api.get(
-      `/ventas/${original._id}/solicitud-pendiente`
-    );
-
-    const solicitud = res.data;
-
-    if (solicitud?.payload) {
-      ventaInicial = {
-        ...ventaInicial,
-        ...solicitud.payload,
-      };
-
-      changedFields = Object.keys(solicitud.payload);
-      solicitudId = solicitud._id; // 🔴 ESTA ERA LA CLAVE
-    }
-  } catch {
-    // nada
-  }
-}
-
-
-
- // 🟡 SI HAY REVISIÓN PENDIENTE → cargar solicitud (ADMIN o EMPLEADO)
-if (original.estadoRevision === "pendiente") {
-  try {
-    const res = await api.get(
-      `/ventas/${original._id}/solicitud-pendiente`
-    );
-
-    const solicitud = res.data;
-    if (solicitud?.payload) {
-      ventaInicial = {
-        ...ventaInicial,
-        ...solicitud.payload,
-      };
-
-      changedFields = Object.keys(solicitud.payload);
-    }
-  } catch {
-    // fallback a edición normal
-  }
-}
-
-
-  // 🗓 Normalizar fecha
-  ventaInicial.fechaEfecto = String(
-    ventaInicial.fechaEfecto
-  ).slice(0, 10);
-
- setVentaEditando({
-  data: ventaInicial,
-  original,
-  changedFields,
-  solicitudId, // 🔥 IMPRESCINDIBLE
-  fromSocket: false,
-});
-
-}}
-
-
-    onDelete={(row) => {
-      const original = ventas.find(v => v._id === row._id);
-      if (original) setVentaAEliminar(original);
-    }}
-  />
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+          {Object.entries(produccionPorRamo).map(([r, total]) => (
+            <div
+              key={r}
+              className="border border-slate-200 rounded-md px-3 py-2"
+            >
+              <p className="text-xs text-slate-500 truncate">{r}</p>
+              <p className="text-sm font-semibold text-slate-800 mt-1">
+                {total.toFixed(2)} €
+              </p>
+            </div>
+          ))}
+        </div>
+      </div>
+    </>
+  )}
 </div>
 
+
+
+{/* 🔍 BUSCADOR + FILTROS (ADMIN) */}
+{isAdmin && (
+  loading ? (
+    <VentasSearchSkeleton />
+  ) : (
+    <div className={`${CARD} p-6 space-y-4`}>
+
+      {/* 🔍 BÚSQUEDA GLOBAL */}
+      <VentasGlobalSearch
+        value={search}
+        onChange={setSearch}
+      />
+
+      {searchActive && (
+        <p className="text-xs text-slate-500">
+          🔍 Búsqueda activa · Se ignoran mes, año y filtros
+        </p>
+      )}
+
+      {/* 🎛 FILTROS */}
+      <div
+        className={`flex gap-6 flex-wrap items-end transition-opacity duration-200 ${
+          searchActive ? "opacity-50 pointer-events-none" : ""
+        }`}
+      >
+        <FiltroMes
+          mes={mes}
+          anio={anio}
+          setMes={setMes}
+          setAnio={setAnio}
+          minPeriodo={minPeriodo}
+          maxPeriodo={maxPeriodo}
+        />
+
+        <FiltroAnio
+          anio={anio}
+          setAnio={setAnio}
+        />
+
+        <Select
+          label="Aseguradora"
+          value={aseguradora}
+          setValue={setAseguradora}
+          options={aseguradoras}
+        />
+
+        <Select
+          label="Ramo"
+          value={ramo}
+          setValue={setRamo}
+          options={ramos}
+        />
+
+        <Select
+          label="Usuario"
+          value={usuario}
+          setValue={setUsuario}
+          options={usuarios}
+        />
+      </div>
+
+    </div>
+  )
+)}
+
+
+
+
+
+
+     {/* TABLA */}
+{loading ? (
+  <div className="w-full overflow-x-auto">
+    <div className="min-w-[1100px]">
+      <VentasTableSkeleton rows={6} />
+    </div>
+  </div>
+) : (
+  <div className="w-full overflow-x-auto">
+    <div className="min-w-[1100px] transition-opacity duration-200 ease-out">
+      <VentasTable
+        ventas={ventasFiltradas.map(v => ({
+          _id: v._id,
+          fecha: new Date(v.fechaEfecto).toLocaleDateString(),
+          poliza: v.numeroPoliza,
+          tomador: v.tomador,
+          aseguradora: v.aseguradora,
+          ramo: v.ramo,
+          prima: v.primaNeta,
+          usuario: v.createdBy?.nombre || "-",
+          estadoRevision: (v as any).estadoRevision ?? null,
+        }))}
+
+        isAdmin={isAdmin}
+
+        onClearRevision={async (row) => {
+          await api.patch(`/ventas/${row._id}/marcar-revision-leida`);
+          setVentas(prev =>
+            prev.map(v =>
+              v._id === row._id
+                ? { ...v, estadoRevision: null }
+                : v
+            )
+          );
+          setRevisionCount(0);
+        }}
+
+       onEdit={async (row) => {
+  const originalVenta = ventas.find(v => v._id === row._id);
+  if (!originalVenta) return;
+
+  // ✅ COPIA PROFUNDA — el original NO se toca
+  const original = JSON.parse(JSON.stringify(originalVenta));
+
+  let ventaInicial: any = JSON.parse(JSON.stringify(original));
+  let changedFields: string[] = [];
+  let solicitudId: string | undefined;
+
+  // 🟡 SI HAY REVISIÓN PENDIENTE → cargar solicitud
+  if (original.estadoRevision === "pendiente") {
+    try {
+      const res = await api.get(
+        `/ventas/${original._id}/solicitud-pendiente`
+      );
+
+      const solicitud = res.data;
+
+      if (solicitud?.payload && typeof solicitud.payload === "object") {
+        ventaInicial = {
+          ...ventaInicial,
+          ...solicitud.payload,
+        };
+
+        changedFields = Object.keys(solicitud.payload);
+        solicitudId = solicitud._id; // 🔑 CLAVE
+      }
+    } catch {
+      // fallback → edición normal
+    }
+  }
+
+  // 🗓 Normalizar fecha para el formulario
+  if (ventaInicial.fechaEfecto) {
+    ventaInicial.fechaEfecto = String(
+      ventaInicial.fechaEfecto
+    ).slice(0, 10);
+  }
+
+  // 🔥 ABRIR MODAL
+  setVentaEditando({
+    data: ventaInicial,
+    original,
+    changedFields,
+    solicitudId,
+    fromSocket: false,
+  });
+}}
+
+
+
+        onDelete={(row) => {
+          const original = ventas.find(v => v._id === row._id);
+          if (original) setVentaAEliminar(original);
+        }}
+      />
+    </div>
   </div>
 )}
+
 
 
       
