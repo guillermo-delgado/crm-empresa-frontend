@@ -89,6 +89,8 @@ try {
 
 const [ventasBusqueda, setVentasBusqueda] = useState<VentaAPI[] | null>(null);
 const [loadingBusqueda, setLoadingBusqueda] = useState(false);
+loadingBusqueda;
+
 
 
 
