@@ -9,6 +9,8 @@ type Props = {
   submitLabel?: string;
   onSubmit?: (data: any) => void;
   onCancel?: () => void;
+
+  usuariosAsignables?: Usuario[];
 };
 
 type FormState = {

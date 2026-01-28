@@ -10,6 +10,7 @@ type Props = {
     _id: string;
     estadoRevision?: "pendiente" | "aceptada" | "rechazada" | null;
   }) => void;
+  
 };
 
 export default function EditVentaModal({
@@ -22,7 +23,10 @@ export default function EditVentaModal({
   const originalData = venta?.original ?? null;
 
   const [showInfo, setShowInfo] = useState(false);
-  const [usuarios, setUsuarios] = useState<any[]>([]);
+const [usuarios, setUsuarios] = useState<any[]>([]);
+
+// ✅ CLAVE PARA EL BUILD (una sola vez)
+const usuariosAsignables = usuarios;
 
   const user = JSON.parse(localStorage.getItem("user") || "{}");
   const isAdmin = user?.role === "admin";
@@ -38,7 +42,7 @@ export default function EditVentaModal({
      CARGAR USUARIOS (ADMIN)
      (se mantiene por compatibilidad futura)
   ========================= */
-  useEffect(() => {
+useEffect(() => {
     if (!isAdmin) return;
 
     api
@@ -46,6 +50,8 @@ export default function EditVentaModal({
       .then((res) => setUsuarios(res.data || []))
       .catch(() => {});
   }, [isAdmin]);
+
+
 
   return (
     <>
@@ -65,6 +71,7 @@ export default function EditVentaModal({
 
           <div className="flex-1 overflow-y-auto pr-2 min-h-0">
             <VentaForm
+            usuariosAsignables={usuariosAsignables}
               key={ventaData._id}
               initialData={{
                 fechaEfecto:
