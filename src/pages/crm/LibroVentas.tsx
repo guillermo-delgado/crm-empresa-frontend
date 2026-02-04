@@ -123,8 +123,6 @@ const solicitudesOrdenadas = useMemo(() => {
 
 
 useEffect(() => {
-  if (!isAdmin) return;
-
   if (search.trim().length < 2) {
     setVentasBusqueda(null);
     return;
@@ -142,10 +140,11 @@ useEffect(() => {
     } finally {
       setLoadingBusqueda(false);
     }
-  }, 300); // debounce real
+  }, 300);
 
   return () => clearTimeout(timeout);
-}, [search, isAdmin]);
+}, [search]);
+
 
 
 
@@ -372,13 +371,12 @@ const SOLICITUD_COLORS: Record<string, string> = {
 
 
 const ventasBase = useMemo(() => {
-  const base =
-    isAdmin && ventasBusqueda !== null
-      ? ventasBusqueda
-      : ventas;
+  if (ventasBusqueda !== null) {
+    return ventasBusqueda;
+  }
+  return ventas;
+}, [ventasBusqueda, ventas]);
 
-return base;
-}, [isAdmin, ventasBusqueda, ventas]);
 
 
 
@@ -566,25 +564,25 @@ const ventasFiltradas = useMemo(() => {
 
 
 {/* 🔍 BUSCADOR + FILTROS (ADMIN) */}
-{isAdmin && (
-  loading ? (
-    <VentasSearchSkeleton />
-  ) : (
-    <div className={`${CARD} p-6 space-y-4`}>
+{loading ? (
+  <VentasSearchSkeleton />
+) : (
+  <div className={`${CARD} p-6 space-y-4`}>
 
-      {/* 🔍 BÚSQUEDA GLOBAL */}
-      <VentasGlobalSearch
-        value={search}
-        onChange={setSearch}
-      />
+    {/* 🔍 BÚSQUEDA GLOBAL (TODOS) */}
+    <VentasGlobalSearch
+      value={search}
+      onChange={setSearch}
+    />
 
-      {searchActive && (
-        <p className="text-xs text-slate-500">
-          🔍 Búsqueda activa · Se ignoran mes, año y filtros
-        </p>
-      )}
+    {searchActive && (
+      <p className="text-xs text-slate-500">
+        🔍 Búsqueda activa · Se ignoran mes, año y filtros
+      </p>
+    )}
 
-      {/* 🎛 FILTROS */}
+    {/* 🎛 FILTROS (SOLO ADMIN) */}
+    {isAdmin && (
       <div
         className={`flex gap-6 flex-wrap items-end transition-opacity duration-200 ${
           searchActive ? "opacity-50 pointer-events-none" : ""
@@ -625,10 +623,11 @@ const ventasFiltradas = useMemo(() => {
           options={usuarios}
         />
       </div>
+    )}
 
-    </div>
-  )
+  </div>
 )}
+
 
 
 
