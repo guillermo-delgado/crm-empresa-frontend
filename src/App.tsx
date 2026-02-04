@@ -38,6 +38,11 @@ function AppInner() {
   useEffect(() => {
     const socket = getSocket();
 
+    // ✅ GUARD CLAVE — SIN ESTO FALLA EL BUILD
+    if (!socket) {
+      return;
+    }
+
     socket.on("connect", () => {
       console.log("🟢 SOCKET CONECTADO:", socket.id);
     });
