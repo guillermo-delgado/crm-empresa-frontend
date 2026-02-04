@@ -18,6 +18,10 @@ import * as XLSX from "xlsx";
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
 import { getSocket } from "../../services/socket";
+import AnularVentaModal from "../../components/ventas/AnularVentaModal";
+import RehabilitarVentaModal from "../../components/ventas/RehabilitarVentaModal";
+
+
 
 
 type VentaAPI = {
@@ -34,9 +38,11 @@ type VentaAPI = {
     nombre: string;
   };
 
-  // 🔔 Estado de revisión (para colores en la tabla)
   estadoRevision?: "pendiente" | "aceptada" | "rechazada" | null;
+
+  anulada?: boolean;
 };
+
 
 
 
@@ -91,6 +97,7 @@ loadingBusqueda;
 
 
 
+
   // 📅 Límites de periodo (empleados)
 const hoy = new Date();
 const minPeriodo = new Date(hoy.getFullYear(), hoy.getMonth(), 1);
@@ -99,6 +106,10 @@ const maxPeriodo = new Date(hoy.getFullYear(), hoy.getMonth() + 2, 1);
 
 const [showSolicitudesModal, setShowSolicitudesModal] = useState(false);
 const [solicitudes, setSolicitudes] = useState<any[]>([]);
+const [solicitudSeleccionada, setSolicitudSeleccionada] = useState<any | null>(null);
+const [ventaARehabilitar, setVentaARehabilitar] = useState<any | null>(null);
+
+
 const [showDeleteInfo, setShowDeleteInfo] = useState(false);
 const solicitudesOrdenadas = useMemo(() => {
   return [...solicitudes].sort(
@@ -140,8 +151,22 @@ useEffect(() => {
 
 
   const [ventas, setVentas] = useState<VentaAPI[]>([]);
-//   useEffect(() => {
+  // 🔔 BADGE EMPLEADO – EXACTAMENTE COMO EL CÓDIGO ANTIGUO
+// useEffect(() => {
 //   if (isAdmin) return;
+
+//   const notificar = ventas.filter(
+//     v =>
+//       v.estadoRevision === "aceptada" ||
+//       v.estadoRevision === "rechazada"
+//   ).length;
+
+//   setRevisionCount(notificar);
+// }, [ventas, isAdmin]);
+
+
+  // useEffect(() => {
+  // if (isAdmin) return;
 
 //   const pendientes = ventas.filter(
 //     v => v.estadoRevision === "pendiente" || v.estadoRevision === "aceptada" || v.estadoRevision === "rechazada"
@@ -154,6 +179,8 @@ useEffect(() => {
 
   const [ventaEditando, setVentaEditando] = useState<VentaEditando | null>(null);
 const [ventaAEliminar, setVentaAEliminar] = useState<VentaAEliminar | null>(null);
+const [ventaAAnular, setVentaAAnular] = useState<VentaAPI | null>(null);
+
   
 
   const [aseguradora, setAseguradora] = useState("ALL");
@@ -169,11 +196,12 @@ const cargarSolicitudes = async () => {
   try {
     const res = await api.get("/solicitudes");
     setSolicitudes(res.data || []);
-    setRevisionCount(res.data.length); // 🔔 ÚNICO sitio
+    // ❌ NUNCA setRevisionCount AQUÍ
   } catch {
-    setRevisionCount(0);
+    // nada
   }
 };
+
 
 
 
@@ -207,20 +235,20 @@ useEffect(() => {
 }, [isAdmin]);
 
 // 🔔 Cargar revisiones pendientes al entrar (EMPLEADO)
-useEffect(() => {
-  if (isAdmin) return;
+// useEffect(() => {
+//   if (isAdmin) return;
 
-  const cargarRevisionesEmpleado = async () => {
-    try {
-      const res = await api.get("/ventas/revisiones-pendientes");
-      setRevisionCount(res.data?.count ?? 0);
-    } catch {
-      setRevisionCount(0);
-    }
-  };
+//   const cargarRevisionesEmpleado = async () => {
+//     try {
+//       const res = await api.get("/ventas/revisiones-pendientes");
+//       setRevisionCount(res.data?.count ?? 0);
+//     } catch {
+//       setRevisionCount(0);
+//     }
+//   };
 
-  cargarRevisionesEmpleado();
-}, [isAdmin]);
+//   cargarRevisionesEmpleado();
+// }, [isAdmin]);
 
 // 3️⃣ Socket tiempo real
 useEffect(() => {
@@ -242,12 +270,100 @@ useEffect(() => {
 
 
 
-const ventasBase = useMemo(() => {
-  if (isAdmin && ventasBusqueda !== null) {
-    return ventasBusqueda;
+useEffect(() => {
+ // console.log("🔵 useEffect solicitudSeleccionada:", solicitudSeleccionada);
+  if (!solicitudSeleccionada) return;
+
+  const s = solicitudSeleccionada;
+
+  // 🟢 REHABILITAR LOCAL (desde tabla, no backend)
+if (s.tipo === "REHABILITAR_VENTA" && s.local) {
+  // Garantiza que el modal tenga venta
+  if (!ventaARehabilitar && s.venta?._id) {
+    api.get(`/ventas/${s.venta._id}`).then(res => {
+      setVentaARehabilitar(res.data);
+    });
   }
-  return ventas;
+
+  setShowSolicitudesModal(false);
+  return;
+}
+
+
+  const resolverSolicitud = async () => {
+    try {
+      // 🟢 EDITAR
+      if (s.tipo === "EDITAR_VENTA") {
+        const res = await api.get(`/ventas/${s.venta._id}`);
+        const original = res.data;
+
+        setVentaEditando({
+          data: { ...original, ...s.payload },
+          original,
+          changedFields: Object.keys(s.payload || {}),
+          solicitudId: s._id,
+          fromSocket: true,
+        });
+      }
+
+      // 🔴 ELIMINAR
+      if (s.tipo === "ELIMINAR_VENTA") {
+        const res = await api.get(`/ventas/${s.venta._id}`);
+        const original = res.data;
+
+        setVentaEditando({
+          data: original,
+          original,
+          changedFields: ["__DELETE__"],
+          solicitudId: s._id,
+          fromSocket: true,
+        });
+      }
+
+      // 🔴 ANULAR
+      if (s.tipo === "ANULAR_VENTA") {
+        const res = await api.get(`/ventas/${s.venta._id}`);
+
+        setVentaAAnular({
+          ...res.data,
+          solicitudId: s._id,
+          payload: s.payload,
+          solicitadoPor: s.solicitadoPor,
+        });
+      }
+
+      // 🟢 REHABILITAR (SOLICITUD REAL desde backend)
+      if (s.tipo === "REHABILITAR_VENTA" && !s.local) {
+        const res = await api.get(`/ventas/${s.venta._id}`);
+
+        setVentaARehabilitar({
+          ...res.data,
+          solicitadoPor: s.solicitadoPor,
+        });
+      }
+
+      setShowSolicitudesModal(false);
+    } catch {
+      alert("Error abriendo la solicitud");
+    }
+  };
+
+  resolverSolicitud();
+}, [solicitudSeleccionada]);
+
+
+
+
+
+const ventasBase = useMemo(() => {
+  const base =
+    isAdmin && ventasBusqueda !== null
+      ? ventasBusqueda
+      : ventas;
+
+return base;
 }, [isAdmin, ventasBusqueda, ventas]);
+
 
 
   /* =========================
@@ -514,33 +630,63 @@ const ventasFiltradas = useMemo(() => {
   <div className="w-full overflow-x-auto">
     <div className="min-w-[1100px] transition-opacity duration-200 ease-out">
       <VentasTable
-        ventas={ventasFiltradas.map(v => ({
-          _id: v._id,
-          fecha: new Date(v.fechaEfecto).toLocaleDateString(),
-          poliza: v.numeroPoliza,
-          tomador: v.tomador,
-          aseguradora: v.aseguradora,
-          ramo: v.ramo,
-          prima: v.primaNeta,
-          usuario: v.createdBy?.nombre || "-",
-          estadoRevision: (v as any).estadoRevision ?? null,
-        }))}
+       ventas={ventasFiltradas.map(v => ({
+  _id: v._id,
+  fecha: new Date(v.fechaEfecto).toLocaleDateString(),
+  poliza: v.numeroPoliza,
+  tomador: v.tomador,
+  aseguradora: v.aseguradora,
+  ramo: v.ramo,
+  prima: v.primaNeta,
+  usuario: v.createdBy?.nombre || "-",
 
-        isAdmin={isAdmin}
+  estadoRevision: (v as any).estadoRevision ?? null,
+  estado: (v as any).estado,
+  anulada: (v as any).estado === "ANULADA",
+}))}
 
-        onClearRevision={async (row) => {
-          await api.patch(`/ventas/${row._id}/marcar-revision-leida`);
-          setVentas(prev =>
-            prev.map(v =>
-              v._id === row._id
-                ? { ...v, estadoRevision: null }
-                : v
-            )
-          );
-          setRevisionCount(0);
-        }}
+isAdmin={isAdmin}
 
-       onEdit={async (row) => {
+onAnular={(row) => {
+  const original = ventas.find(v => v._id === row._id);
+  if (original) setVentaAAnular(original);
+}}
+
+onRehabilitar={(row) => {
+  const original = ventas.find(v => v._id === row._id);
+  if (!original) return;
+
+  setVentaARehabilitar(original);
+
+  setSolicitudSeleccionada({
+  _id: original._id,          // se mantiene
+  tipo: "REHABILITAR_VENTA",
+  estado: "PENDIENTE",
+  venta: { _id: original._id },
+  local: true,                // 🔑 CLAVE
+});
+
+
+}}
+
+onDelete={(row) => {
+  const original = ventas.find(v => v._id === row._id);
+  if (original) setVentaAEliminar(original);
+}}
+
+onClearRevision={async (row) => {
+  await api.patch(`/ventas/${row._id}/marcar-revision-leida`);
+  setVentas(prev =>
+    prev.map(v =>
+      v._id === row._id
+        ? { ...v, estadoRevision: null }
+        : v
+    )
+  );
+  setRevisionCount(prev => Math.max(prev - 1, 0));
+}}
+
+onEdit={async (row) => {
   const originalVenta = ventas.find(v => v._id === row._id);
   if (!originalVenta) return;
 
@@ -591,12 +737,6 @@ const ventasFiltradas = useMemo(() => {
   });
 }}
 
-
-
-        onDelete={(row) => {
-          const original = ventas.find(v => v._id === row._id);
-          if (original) setVentaAEliminar(original);
-        }}
       />
     </div>
   </div>
@@ -673,119 +813,18 @@ const ventasFiltradas = useMemo(() => {
         {solicitudesOrdenadas.map((s) => (
 
 
-          <div
-            key={s._id}
-            className="p-3 rounded border hover:bg-slate-100 cursor-pointer"
-            onClick={async () => {
-  try {
-  setShowSolicitudesModal(false);
-
-  // 🟢 EDITAR VENTA (lo que ya tenías)
-  if (s.tipo === "EDITAR_VENTA") {
-    // 1️⃣ Obtener venta original
-    const res = await api.get(`/ventas/${s.venta._id}`);
-    const original = res.data;
-
-    // 2️⃣ Construir venta de revisión
-    const ventaRevision = {
-      ...original,
-      ...s.payload,
-      createdBy: original.createdBy,
-      fechaEfecto: (() => {
-        const f = s.payload?.fechaEfecto ?? original.fechaEfecto;
-        if (!f) return "";
-
-        if (typeof f === "string" && f.includes("/")) {
-          const [d, m, y] = f.split("/");
-          return `${y}-${m.padStart(2, "0")}-${d}`;
-        }
-
-        return String(f).slice(0, 10);
-      })(),
-    };
-
-    // 3️⃣ Detectar cambios reales
-    const CAMPOS_FORMULARIO = [
-      "fechaEfecto",
-      "numeroPoliza",
-      "tomador",
-      "aseguradora",
-      "ramo",
-      "primaNeta",
-      "formaPago",
-      "actividad",
-      "observaciones",
-    ];
-
-    const normalize = (v: any) => {
-  if (v === null || v === undefined) return "";
-  return String(v)
-    .trim()
-    .toLowerCase()
-    .replace(/\s+/g, " ");
-};
-;
-
-const normalizeFecha = (v: any) => {
-  if (!v) return "";
-  return String(v).slice(0, 10);
-};
-
-const changedFields = CAMPOS_FORMULARIO.filter((field) => {
-  const o = original[field];
-  const r = ventaRevision[field];
-
-  if (field === "fechaEfecto") {
-    return normalizeFecha(o) !== normalizeFecha(r);
-  }
-
-  return normalize(o) !== normalize(r);
-});
-
-
-    // 4️⃣ 🔥 ABRIR MODAL DE EDICIÓN
-    setVentaEditando({
-      data: ventaRevision,
-      original,
-      changedFields,
-      solicitudId: s._id,
-      fromSocket: true,
-    });
-
-    return;
-  }
-
-  // 🔴 ELIMINAR VENTA 
-if (s.tipo === "ELIMINAR_VENTA") {
-  const res = await api.get(`/ventas/${s.venta._id}`);
-  const original = res.data;
-
-  const ventaDelete = {
-    ...original,
-    fechaEfecto: String(original.fechaEfecto).slice(0, 10),
-  };
-
-  setVentaEditando({
-    data: ventaDelete,
-    original,
-    changedFields: ["__DELETE__"],
-    solicitudId: s._id,
-    fromSocket: true,
-  });
-
-  return;
-}
-
-
-
-
-} catch (e) {
-  alert("Error cargando la solicitud");
-}
-
+     <div
+  key={s._id}
+  className="p-3 rounded border hover:bg-slate-100 cursor-pointer"
+  onClick={() => {
+  console.log("🟡 CLICK SOLICITUD:", s);
+  setShowSolicitudesModal(false);   // 👈 CIERRA PRIMERO
+  setSolicitudSeleccionada(s);      // 👈 LUEGO RESUELVE
 }}
 
-          >
+>
+
+
             <div className="text-sm font-medium">
               {s.venta?.tomador || "Sin tomador"}
             </div>
@@ -877,6 +916,37 @@ setVentaAEliminar(null);
     }}
   />
 )}
+
+{ventaAAnular && (
+  <AnularVentaModal
+    venta={ventaAAnular}
+    solicitud={solicitudSeleccionada}
+    onClose={() => setVentaAAnular(null)}
+    onConfirm={() => {
+      setVentaAAnular(null);
+      fetchLibroVentas();
+    }}
+  />
+)}
+
+{ventaARehabilitar && (
+  <RehabilitarVentaModal
+    venta={ventaARehabilitar}
+    solicitud={solicitudSeleccionada}
+    onClose={() => {
+      setVentaARehabilitar(null);
+      setSolicitudSeleccionada(null);
+    }}
+    onConfirm={() => {
+      setVentaARehabilitar(null);
+      setSolicitudSeleccionada(null);
+      fetchLibroVentas();
+    }}
+  />
+)}
+
+
+
 
 {showDeleteInfo && (
   <InfoModal

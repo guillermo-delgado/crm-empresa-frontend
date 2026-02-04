@@ -28,6 +28,8 @@ const [usuarios, setUsuarios] = useState<any[]>([]);
 // ✅ CLAVE PARA EL BUILD (una sola vez)
 const usuariosAsignables = usuarios;
 
+
+
   const user = JSON.parse(localStorage.getItem("user") || "{}");
   const isAdmin = user?.role === "admin";
 
@@ -70,6 +72,58 @@ useEffect(() => {
           </h2>
 
           <div className="flex-1 overflow-y-auto pr-2 min-h-0">
+
+            {/* 🔴 REHABILITAR VENTA (SOLO ADMIN Y SOLO SI ESTÁ ANULADA) */}
+{ventaData?.estado === "ANULADA" && (
+
+  <div className="mb-4 flex items-center gap-4 p-3 rounded-md bg-red-50 border border-red-200">
+    <span className="text-sm font-medium text-red-700">
+      Esta venta está anulada
+    </span>
+
+<button
+  type="button"
+  onClick={async () => {
+    try {
+      await api.post(
+  `/ventas/${ventaData._id}/rehabilitar`,
+  {},
+  {
+    validateStatus: (status) => status === 403 || status < 400,
+  }
+);
+
+    } catch (error: any) {
+      // 🟡 403 = solicitud creada correctamente (COMPORTAMIENTO ESPERADO)
+      if (error?.response?.status !== 403) {
+        console.error("❌ Error inesperado solicitando rehabilitación", error);
+      }
+    } finally {
+      // ✅ SIEMPRE: cerrar modal y mostrar InfoModal
+      setShowInfo(true);
+    }
+  }}
+  className="
+    ml-auto
+    px-3 py-1.5
+    rounded-md
+    text-xs font-semibold
+    bg-white
+    border border-red-300
+    text-red-700
+    hover:bg-red-100
+    cursor-pointer
+  "
+>
+  Solicitar rehabilitación
+</button>
+
+
+
+  </div>
+)}
+
+
             <VentaForm
             usuariosAsignables={usuariosAsignables}
               key={ventaData._id}
@@ -97,7 +151,7 @@ useEffect(() => {
               }}
               originalData={originalData}
               changedFields={changedFields}
-              hideActions={false}
+              hideActions={ventaData?.estado === "ANULADA"}
               submitLabel={isDelete ? "" : "Guardar cambios"}
               onCancel={onClose}
               onSubmit={async (data) => {
@@ -136,6 +190,8 @@ useEffect(() => {
                     observaciones: data.observaciones,
                     createdBy: createdById,
                   };
+
+                
 
                   // 🔑 SOLO enviar DNI si realmente cambia
                   if (documentoFiscalHaCambiado) {
