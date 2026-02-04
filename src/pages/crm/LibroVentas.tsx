@@ -352,6 +352,22 @@ if (s.tipo === "REHABILITAR_VENTA" && s.local) {
 }, [solicitudSeleccionada]);
 
 
+/* =========================
+   🔖 LABELS SOLICITUDES
+========================= */
+const SOLICITUD_LABELS: Record<string, string> = {
+  EDITAR_VENTA: "Editar venta",
+  ANULAR_VENTA: "Anular venta",
+  REHABILITAR_VENTA: "Rehabilitar venta",
+  ELIMINAR_VENTA: "Eliminar venta",
+};
+
+const SOLICITUD_COLORS: Record<string, string> = {
+  EDITAR_VENTA: "text-blue-600",
+  ANULAR_VENTA: "text-orange-600",
+  REHABILITAR_VENTA: "text-green-600",
+  ELIMINAR_VENTA: "text-red-600",
+};
 
 
 
@@ -828,9 +844,14 @@ onEdit={async (row) => {
             <div className="text-sm font-medium">
               {s.venta?.tomador || "Sin tomador"}
             </div>
-            <div className="text-xs text-slate-500">
-              Modificar venta
-            </div>
+            <div
+  className={`text-xs font-medium ${
+    SOLICITUD_COLORS[s.tipo] || "text-slate-500"
+  }`}
+>
+  {SOLICITUD_LABELS[s.tipo] || "Solicitud"}
+</div>
+
           </div>
         ))}
       </div>
