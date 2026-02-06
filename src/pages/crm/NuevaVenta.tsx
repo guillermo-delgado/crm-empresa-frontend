@@ -48,13 +48,23 @@ const NuevaVenta = () => {
     actividad: "",
     observaciones: "",
     createdBy: "", // ← NUEVO (solo admin)
-  });
+   createdAt: "",
+  }); 
 
 
   
  // const [success, setSuccess] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [showSuccess, setShowSuccess] = useState(false);
+
+  const [ventaHistorica, setVentaHistorica] = useState(false);
+  useEffect(() => {
+  if (!ventaHistorica) {
+    setForm(f => ({ ...f, createdAt: "" }));
+  }
+}, [ventaHistorica]);
+
+
 
   /* =========================
      CARGAR USUARIOS (solo admin)
@@ -77,30 +87,45 @@ const NuevaVenta = () => {
     setForm({ ...form, [e.target.name]: e.target.value });
   };
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setError(null);
+ const handleSubmit = async (e: React.FormEvent) => {
+  e.preventDefault();
+  setError(null);
 
-    try {
-      await api.post("/ventas", {
-        ...form,
-        primaNeta: Number(form.primaNeta),
-        ...(isAdmin && form.createdBy
-          ? { createdBy: form.createdBy }
-          : {}),
-      });
+  try {
+    const payload: any = {
+      fechaEfecto: form.fechaEfecto,
+      aseguradora: form.aseguradora,
+      ramo: form.ramo,
+      numeroPoliza: form.numeroPoliza,
+      documentoFiscal: form.documentoFiscal,
+      tomador: form.tomador,
+      primaNeta: Number(form.primaNeta),
+      formaPago: form.formaPago,
+      actividad: form.actividad,
+      observaciones: form.observaciones,
+    };
 
-     // setSuccess(true);
-
-     setShowSuccess(true);
-
-    } catch (err: any) {
-      setError(
-        err.response?.data?.message ||
-          "Error inesperado al guardar la venta"
-      );
+    // Usuario asignado (admin)
+    if (isAdmin && form.createdBy) {
+      payload.createdBy = form.createdBy;
     }
-  };
+
+    // 🔥 SOLO si es venta histórica
+    if (isAdmin && ventaHistorica && form.createdAt) {
+      payload.createdAt = form.createdAt;
+    }
+
+    await api.post("/ventas", payload);
+    setShowSuccess(true);
+
+  } catch (err: any) {
+    setError(
+      err.response?.data?.message ||
+      "Error inesperado al guardar la venta"
+    );
+  }
+};
+
 
   return (
   <div className="bg-slate-100 px-6 py-6">  
@@ -134,7 +159,7 @@ const NuevaVenta = () => {
 
 
             {/* FECHA */}
-            <Field label="Fecha de efecto">
+             <Field label="Fecha de efecto">
               <input
                 ref={dateRef}
                 type="date"
@@ -145,6 +170,41 @@ const NuevaVenta = () => {
                 className="input cursor-pointer"
               />
             </Field>
+            {isAdmin && (
+  <div className="flex items-center gap-3">
+    <span className="text-sm font-semibold text-slate-700">
+      Venta histórica
+    </span>
+
+    <button
+      type="button"
+      onClick={() => setVentaHistorica(v => !v)}
+      className={`relative w-12 h-6 rounded-full transition-colors ${
+        ventaHistorica ? "bg-slate-800" : "bg-slate-300"
+      }`}
+    >
+      <span
+        className={`absolute top-0.5 left-0.5 w-5 h-5 rounded-full bg-white shadow transition-transform ${
+          ventaHistorica ? "translate-x-6" : ""
+        }`}
+      />
+    </button>
+  </div>
+)}
+
+           {isAdmin && ventaHistorica && (
+  <Field label="Fecha de creación (venta histórica)">
+    <input
+      type="date"
+      name="createdAt"
+      value={form.createdAt}
+      onChange={handleChange}
+      className="input cursor-pointer"
+    />
+  </Field>
+)}
+
+
 
             {/* USUARIO (SOLO ADMIN) */}
             {isAdmin && (
