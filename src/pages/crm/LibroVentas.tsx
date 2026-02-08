@@ -34,9 +34,11 @@ type VentaAPI = {
   primaNeta: number;
   formaPago?: string;
 
-  createdBy?: {
-    nombre: string;
-  };
+ createdBy?: {
+  _id: string;
+  nombre: string;
+};
+
 
   estadoRevision?: "pendiente" | "aceptada" | "rechazada" | null;
 
@@ -185,7 +187,29 @@ const [ventaAAnular, setVentaAAnular] = useState<VentaAPI | null>(null);
   const [aseguradora, setAseguradora] = useState("ALL");
   const [usuario, setUsuario] = useState("ALL");
   const [ramo, setRamo] = useState("ALL");
-  
+  const [kpis, setKpis] = useState<any>(null);
+const [loadingKpis, setLoadingKpis] = useState(false);
+
+const fetchKPIs = async () => {
+  setLoadingKpis(true);
+  try {
+    const res = await api.get("/ventas/kpis", {
+      params: {
+        mes,
+        anio,
+        aseguradora,
+        ramo,
+        usuario,
+      },
+    });
+    setKpis(res.data);
+  } catch {
+    setKpis(null);
+  } finally {
+    setLoadingKpis(false);
+  }
+};
+
 
   /* =========================
      SOLICITUDES PENDIENTES
@@ -211,6 +235,8 @@ const cargarSolicitudes = async () => {
 
 
   const fetchLibroVentas = async () => {
+    
+
     setLoading(true);
     try {
       const res = await api.get(`/ventas/libro?month=${mes}&year=${anio}`);
@@ -226,6 +252,11 @@ const cargarSolicitudes = async () => {
 useEffect(() => {
   fetchLibroVentas();
 }, [mes, anio]);
+
+useEffect(() => {
+  fetchKPIs();
+}, [mes, anio, aseguradora, ramo, usuario]);
+
 
 // 2️⃣ Cargar solicitudes pendientes al entrar (ADMIN)
 useEffect(() => {
@@ -386,11 +417,13 @@ const ventasBase = useMemo(() => {
 const ventasFiltradas = useMemo(() => {
   return ventasBase.filter((v) => {
     if (aseguradora !== "ALL" && v.aseguradora !== aseguradora) return false;
-    if (usuario !== "ALL" && v.createdBy?.nombre !== usuario) return false;
+    if (usuario !== "ALL" && v.createdBy?._id !== usuario) return false;
     if (ramo !== "ALL" && v.ramo !== ramo) return false;
     return true;
   });
 }, [ventasBase, aseguradora, usuario, ramo]);
+
+
 
 
 
@@ -410,7 +443,14 @@ const ventasFiltradas = useMemo(() => {
   }, [ventasFiltradas]);
 
   const aseguradoras = Array.from(new Set(ventas.map(v => v.aseguradora)));
-  const usuarios = Array.from(new Set(ventas.map(v => v.createdBy?.nombre).filter(Boolean)));
+  const usuarios = Array.from(
+  new Map(
+    ventas
+      .filter(v => v.createdBy?._id)
+      .map(v => [v.createdBy!._id, v.createdBy!])
+  ).values()
+);
+
   const ramos = Array.from(new Set(ventas.map(v => v.ramo)));
   /* =========================
      EXPORT EXCEL
@@ -516,18 +556,24 @@ const ventasFiltradas = useMemo(() => {
 
       {/* KPIs */}
      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-  {loading ? (
+  {loadingKpis ? (
+  <>
+    <KPICardSkeleton />
+    <PeriodoSelectorSkeleton />
+    <ProduccionRamoSkeleton />
+  </>
+) : (
+
     <>
-      <KPICardSkeleton />
-      <PeriodoSelectorSkeleton />
-      <ProduccionRamoSkeleton />
-    </>
-  ) : (
-    <>
-      <KPICard
-        title="Producción total"
-        value={`${produccionTotal.toFixed(2)} €`}
-      />
+    <KPICard
+  title="Producción total"
+  value={`${kpis?.produccion?.actual?.toFixed(2) ?? "0.00"} €`}
+  variationPct={kpis?.produccion?.variacionPct}
+  delta={kpis?.polizas?.delta}
+/>
+
+
+
 
       <PeriodoSelector
         mes={mes}
@@ -616,12 +662,22 @@ const ventasFiltradas = useMemo(() => {
           options={ramos}
         />
 
-        <Select
-          label="Usuario"
-          value={usuario}
-          setValue={setUsuario}
-          options={usuarios}
-        />
+        <div>
+  <label className="block text-xs font-semibold mb-1">Usuario</label>
+  <select
+    value={usuario}
+    onChange={(e) => setUsuario(e.target.value)}
+    className="border rounded px-3 py-2 text-sm cursor-pointer"
+  >
+    <option value="ALL">Todos</option>
+    {usuarios.map((u: any) => (
+      <option key={u._id} value={u._id}>
+        {u.nombre}
+      </option>
+    ))}
+  </select>
+</div>
+
       </div>
     )}
 
