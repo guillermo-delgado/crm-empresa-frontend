@@ -96,6 +96,9 @@ const [ventasBusqueda, setVentasBusqueda] = useState<VentaAPI[] | null>(null);
 const [loadingBusqueda, setLoadingBusqueda] = useState(false);
 loadingBusqueda;
 
+const [diaHasta, setDiaHasta] = useState<number | null>(null);
+
+
 
 
 
@@ -200,6 +203,7 @@ const fetchKPIs = async () => {
         aseguradora,
         ramo,
         usuario,
+        diaHasta,
       },
     });
     setKpis(res.data);
@@ -239,7 +243,14 @@ const cargarSolicitudes = async () => {
 
     setLoading(true);
     try {
-      const res = await api.get(`/ventas/libro?month=${mes}&year=${anio}`);
+      const res = await api.get(`/ventas/libro`, {
+  params: {
+    month: mes,
+    year: anio,
+    diaHasta,
+  },
+});
+
       setVentas(Array.isArray(res.data.ventas) ? res.data.ventas : []);
     } catch (e) {
       console.error("Error cargando libro de ventas", e);
@@ -251,11 +262,11 @@ const cargarSolicitudes = async () => {
 // 1️⃣ Cargar ventas al cambiar periodo
 useEffect(() => {
   fetchLibroVentas();
-}, [mes, anio]);
+},  [mes, anio, diaHasta]);
 
 useEffect(() => {
   fetchKPIs();
-}, [mes, anio, aseguradora, ramo, usuario]);
+}, [mes, anio, aseguradora, ramo, usuario, diaHasta]);
 
 
 // 2️⃣ Cargar solicitudes pendientes al entrar (ADMIN)
@@ -565,12 +576,20 @@ const ventasFiltradas = useMemo(() => {
 ) : (
 
     <>
-    <KPICard
+   <KPICard
   title="Producción total"
+
   value={`${kpis?.produccion?.actual?.toFixed(2) ?? "0.00"} €`}
   variationPct={kpis?.produccion?.variacionPct}
   delta={kpis?.polizas?.delta}
+
+  valueCreated={`${kpis?.produccionCreated?.actual?.toFixed(2) ?? "0.00"} €`}
+  variationPctCreated={kpis?.produccionCreated?.variacionPct}
+  deltaCreated={kpis?.polizasCreated?.delta}
+
+  isAdmin={isAdmin}
 />
+
 
 
 
@@ -629,57 +648,90 @@ const ventasFiltradas = useMemo(() => {
 
     {/* 🎛 FILTROS (SOLO ADMIN) */}
     {isAdmin && (
-      <div
-        className={`flex gap-6 flex-wrap items-end transition-opacity duration-200 ${
-          searchActive ? "opacity-50 pointer-events-none" : ""
-        }`}
-      >
-        <FiltroMes
-          mes={mes}
-          anio={anio}
-          setMes={setMes}
-          setAnio={setAnio}
-          minPeriodo={minPeriodo}
-          maxPeriodo={maxPeriodo}
-        />
-
-        <FiltroAnio
-          anio={anio}
-          setAnio={setAnio}
-        />
-
-        <Select
-          label="Aseguradora"
-          value={aseguradora}
-          setValue={setAseguradora}
-          options={aseguradoras}
-        />
-
-        <Select
-          label="Ramo"
-          value={ramo}
-          setValue={setRamo}
-          options={ramos}
-        />
-
-        <div>
-  <label className="block text-xs font-semibold mb-1">Usuario</label>
-  <select
-    value={usuario}
-    onChange={(e) => setUsuario(e.target.value)}
-    className="border rounded px-3 py-2 text-sm cursor-pointer"
+  <div
+    className={`flex gap-6 flex-wrap items-end transition-opacity duration-200 ${
+      searchActive ? "opacity-50 pointer-events-none" : ""
+    }`}
   >
-    <option value="ALL">Todos</option>
-    {usuarios.map((u: any) => (
-      <option key={u._id} value={u._id}>
-        {u.nombre}
-      </option>
-    ))}
-  </select>
+    <FiltroMes
+      mes={mes}
+      anio={anio}
+      setMes={setMes}
+      setAnio={setAnio}
+      minPeriodo={minPeriodo}
+      maxPeriodo={maxPeriodo}
+    />
+
+    <FiltroAnio
+      anio={anio}
+      setAnio={setAnio}
+    />
+
+    {/* 🔥 NUEVO FILTRO HASTA DÍA */}
+    <div>
+  <label className="block text-xs font-semibold mb-1">
+    A día:
+  </label>
+
+   <input
+    type="date"
+    onClick={(e: any) => e.target.showPicker?.()}
+    value={
+      diaHasta
+        ? `${anio}-${String(mes).padStart(2, "0")}-${String(diaHasta).padStart(2, "0")}`
+        : ""
+    }
+    min={`${anio}-${String(mes).padStart(2, "0")}-01`}
+    max={`${anio}-${String(mes).padStart(2, "0")}-${String(
+      new Date(anio, mes, 0).getDate()
+    ).padStart(2, "0")}`}
+    onChange={(e) => {
+      if (!e.target.value) {
+        setDiaHasta(null);
+        return;
+      }
+
+      const selectedDate = new Date(e.target.value);
+      setDiaHasta(selectedDate.getDate());
+    }}
+    className="border rounded px-3 py-2 text-sm cursor-pointer"
+  />
 </div>
 
-      </div>
-    )}
+
+    <Select
+      label="Aseguradora"
+      value={aseguradora}
+      setValue={setAseguradora}
+      options={aseguradoras}
+    />
+
+    <Select
+      label="Ramo"
+      value={ramo}
+      setValue={setRamo}
+      options={ramos}
+    />
+
+    <div>
+      <label className="block text-xs font-semibold mb-1">Usuario</label>
+      <select
+        value={usuario}
+        onChange={(e) => setUsuario(e.target.value)}
+        className="border rounded px-3 py-2 text-sm cursor-pointer"
+      >
+        <option value="ALL">Todos</option>
+        {usuarios.map((u: any) => (
+          <option key={u._id} value={u._id}>
+            {u.nombre}
+          </option>
+        ))}
+      </select>
+    </div>
+
+  </div>
+)}
+
 
   </div>
 )}
@@ -1104,6 +1156,8 @@ function FiltroAnio({ anio, setAnio }: any) {
     </div>
   );
 }
+
+
 
 function PeriodoSelector({
   mes,
