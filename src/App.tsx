@@ -13,8 +13,7 @@ import NuevaVenta from "./pages/crm/NuevaVenta";
 import CrearUsuario from "./pages/admin/CrearUsuario";
 import HorarioCRM from "./pages/crm/horario/HorarioCRM";
 import Dashboard from "./pages/crm/Dashboard";
-
-
+import ExcelComisiones from "./pages/crm/ExcelComisiones"; // ✅ NUEVO
 
 /* ===== AUTH ===== */
 import Login from "./pages/auth/Login";
@@ -41,7 +40,6 @@ function AppInner() {
   useEffect(() => {
     const socket = getSocket();
 
-    // ✅ GUARD CLAVE — SIN ESTO FALLA EL BUILD
     if (!socket) {
       return;
     }
@@ -127,7 +125,6 @@ function AppInner() {
           </ProtectedRoute>
         }
       >
-
         <Route
           path="/crm/dashboard"
           element={
@@ -136,6 +133,7 @@ function AppInner() {
             </ProtectedRoute>
           }
         />
+
         <Route path="/crm/libro-ventas" element={<LibroVentas />} />
         <Route path="/crm/nueva-venta" element={<NuevaVenta />} />
 
@@ -153,6 +151,16 @@ function AppInner() {
           element={
             <ProtectedRoute adminOnly>
               <CrearUsuario />
+            </ProtectedRoute>
+          }
+        />
+
+        {/* ✅ NUEVA RUTA SOLO ADMIN */}
+        <Route
+          path="/crm/excel-comisiones"
+          element={
+            <ProtectedRoute adminOnly>
+              <ExcelComisiones />
             </ProtectedRoute>
           }
         />
