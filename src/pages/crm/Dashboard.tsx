@@ -10,6 +10,9 @@ import Polizas3AniosChart from "../../components/dashboard/Polizas3AniosChart";
 import PrimaEfectoChart from "../../components/dashboard/PrimaEfectoChart";
 import PrimaCreatedChart from "../../components/dashboard/PrimaCreatedChart";
 
+import Facturacion3AniosChart from "../../components/dashboard/Facturacion3AniosChart";
+import ProduccionRenovacionesChart from "../../components/dashboard/ProduccionRenovacionesChart";
+
 const CARD =
   "bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden";
 
@@ -21,52 +24,45 @@ export default function Dashboard() {
   const [ramo, setRamo] = useState("ALL");
   const [usuario, setUsuario] = useState("ALL");
 
- 
- const [layout, setLayout] = useState<Layout[]>([
-  { i: "polizas", x: 0, y: 0, w: 6, h: 9 },
-  { i: "primaEfecto", x: 6, y: 0, w: 6, h: 9 },
-  { i: "primaCreated", x: 0, y: 9, w: 12, h: 9 },
-]);
+  const [view, setView] = useState<"ventas" | "facturacion">("ventas");
 
-const [manualChange, setManualChange] = useState(false);
+  const [layout, setLayout] = useState<Layout[]>([
+    { i: "polizas", x: 0, y: 0, w: 6, h: 9 },
+    { i: "primaEfecto", x: 6, y: 0, w: 6, h: 9 },
+    { i: "primaCreated", x: 0, y: 9, w: 12, h: 9 },
+  ]);
 
-/* =========================
-   HACER VISOR PRINCIPAL
-========================= */
-const makeMain = (id: string) => {
-  setManualChange(true);
+  const [manualChange, setManualChange] = useState(false);
 
-  const others = layout.filter((l) => l.i !== id);
+  const makeMain = (id: string) => {
+    setManualChange(true);
 
-  const newLayout: Layout[] = [
-    { i: id, x: 0, y: 0, w: 12, h: 10 },
-    { i: others[0].i, x: 0, y: 10, w: 6, h: 7 },
-    { i: others[1].i, x: 6, y: 10, w: 6, h: 7 },
-  ];
+    const others = layout.filter((l) => l.i !== id);
 
-  setLayout(newLayout);
-};
+    const newLayout: Layout[] = [
+      { i: id, x: 0, y: 0, w: 12, h: 10 },
+      { i: others[0].i, x: 0, y: 10, w: 6, h: 7 },
+      { i: others[1].i, x: 6, y: 10, w: 6, h: 7 },
+    ];
 
-/* =========================
-   DRAG → DETECTAR EL MÁS ALTO
-========================= */
-const handleLayoutChange = (newLayout: Layout[]) => {
+    setLayout(newLayout);
+  };
 
-  if (manualChange) {
-    setManualChange(false);
-    return;
-  }
+  const handleLayoutChange = (newLayout: Layout[]) => {
+    if (manualChange) {
+      setManualChange(false);
+      return;
+    }
 
-  const sorted = [...newLayout].sort((a, b) => a.y - b.y);
-  const topItem = sorted[0];
+    const sorted = [...newLayout].sort((a, b) => a.y - b.y);
+    const topItem = sorted[0];
 
-  if (!topItem) return;
+    if (!topItem) return;
 
-  if (topItem.w !== 12) {
-    makeMain(topItem.i);
-  }
-};
-
+    if (topItem.w !== 12) {
+      makeMain(topItem.i);
+    }
+  };
 
   const isMain = (id: string) => {
     const item = layout.find((l) => l.i === id);
@@ -79,10 +75,12 @@ const handleLayoutChange = (newLayout: Layout[]) => {
       {/* HEADER */}
       <div className="px-8 pt-8 pb-6">
         <div className="flex flex-col lg:flex-row lg:items-end lg:justify-between gap-6">
+
           <div>
             <h1 className="text-3xl font-semibold text-slate-800">
               Dashboard CRM
             </h1>
+
             <p className="text-sm text-slate-500 mt-1">
               Panel analítico · Comparativa 3 años
             </p>
@@ -99,98 +97,181 @@ const handleLayoutChange = (newLayout: Layout[]) => {
               setUsuario={setUsuario}
             />
           </div>
+
+        </div>
+      </div>
+
+      {/* NAVBAR INVISIBLE */}
+      <div className="px-8 pb-4">
+        <div className="flex gap-6 border-b border-slate-200">
+
+          <button
+            onClick={() => setView("ventas")}
+            className={`pb-2 text-sm font-medium transition ${
+              view === "ventas"
+                ? "text-slate-800 border-b-2 border-slate-800"
+                : "text-slate-400 hover:text-slate-600"
+            }`}
+          >
+            Ventas
+          </button>
+
+          <button
+            onClick={() => setView("facturacion")}
+            className={`pb-2 text-sm font-medium transition ${
+              view === "facturacion"
+                ? "text-slate-800 border-b-2 border-slate-800"
+                : "text-slate-400 hover:text-slate-600"
+            }`}
+          >
+            Facturación
+          </button>
+
         </div>
       </div>
 
       {/* GRID */}
       <div className="px-6 pb-10">
-        <GridLayout
-  layout={layout}
-  onLayoutChange={handleLayoutChange}
-  cols={12}
-  rowHeight={38}
-  width={1400}
-  margin={[24, 24]}
-  containerPadding={[0, 0]}
-  isResizable={false}
-  draggableHandle=".drag-handle"
->
 
+        {view === "ventas" && (
+          <GridLayout
+            layout={layout}
+            onLayoutChange={handleLayoutChange}
+            cols={12}
+            rowHeight={38}
+            width={1400}
+            margin={[24, 24]}
+            containerPadding={[0, 0]}
+            isResizable={false}
+            draggableHandle=".drag-handle"
+          >
 
-          {/* POLIZAS */}
-<div key="polizas" className={CARD}>
-  <div className="flex justify-between items-center px-6 py-3 border-b bg-slate-50">
-    <span className="font-medium">Pólizas</span>
+            {/* POLIZAS */}
+            <div key="polizas" className={CARD}>
+              <div className="flex justify-between items-center px-6 py-3 border-b bg-slate-50">
 
-    {!isMain("polizas") && (
-      <button
-        onClick={() => makeMain("polizas")}
-        className="text-xs bg-slate-200 px-3 py-1 rounded-lg hover:bg-slate-300 transition"
-      >
-        Principal
-      </button>
-    )}
-  </div>
+                <span className="font-medium">Pólizas</span>
 
-  <div
-    className={`p-4 drag-handle ${
-      isMain("polizas") ? "h-[420px]" : "h-[260px]"
-    }`}
-  >
-    <Polizas3AniosChart
-      aseguradora={aseguradora}
-      ramo={ramo}
-      usuario={usuario}
-    />
-  </div>
-</div>
+                {!isMain("polizas") && (
+                  <button
+                    onClick={() => makeMain("polizas")}
+                    className="text-xs bg-slate-200 px-3 py-1 rounded-lg hover:bg-slate-300 transition"
+                  >
+                    Principal
+                  </button>
+                )}
 
+              </div>
 
-          {/* PRIMA EFECTO */}
-          <div key="primaEfecto" className={CARD}>
-            <div className="flex justify-between items-center px-6 py-3 border-b bg-slate-50">
-              <span className="font-medium">Primas · Fecha efecto</span>
-              {!isMain("primaEfecto") && (
-                <button
-                  onClick={() => makeMain("primaEfecto")}
-                  className="text-xs bg-slate-200 px-3 py-1 rounded-lg hover:bg-slate-300 transition"
-                >
-                  Principal
-                </button>
-              )}
+              <div
+                className={`p-4 drag-handle ${
+                  isMain("polizas") ? "h-[420px]" : "h-[260px]"
+                }`}
+              >
+                <Polizas3AniosChart
+                  aseguradora={aseguradora}
+                  ramo={ramo}
+                  usuario={usuario}
+                />
+              </div>
             </div>
-            <div className={`p-4 ${isMain("primaEfecto") ? "h-[420px]" : "h-[260px]"}`}>
-              <PrimaEfectoChart
-                aseguradora={aseguradora}
-                ramo={ramo}
-                usuario={usuario}
-              />
-            </div>
-          </div>
 
-          {/* PRIMA CREATED */}
-          <div key="primaCreated" className={CARD}>
-            <div className="flex justify-between items-center px-6 py-3 border-b bg-slate-50">
-              <span className="font-medium">Primas · Registro </span>
-              {!isMain("primaCreated") && (
-                <button
-                  onClick={() => makeMain("primaCreated")}
-                  className="text-xs bg-slate-200 px-3 py-1 rounded-lg hover:bg-slate-300 transition"
-                >
-                  Principal
-                </button>
-              )}
-            </div>
-            <div className={`p-4 ${isMain("primaCreated") ? "h-[420px]" : "h-[260px]"}`}>
-              <PrimaCreatedChart
-                aseguradora={aseguradora}
-                ramo={ramo}
-                usuario={usuario}
-              />
-            </div>
-          </div>
+            {/* PRIMA EFECTO */}
+            <div key="primaEfecto" className={CARD}>
+              <div className="flex justify-between items-center px-6 py-3 border-b bg-slate-50">
 
-        </GridLayout>
+                <span className="font-medium">Primas · Fecha efecto</span>
+
+                {!isMain("primaEfecto") && (
+                  <button
+                    onClick={() => makeMain("primaEfecto")}
+                    className="text-xs bg-slate-200 px-3 py-1 rounded-lg hover:bg-slate-300 transition"
+                  >
+                    Principal
+                  </button>
+                )}
+
+              </div>
+
+              <div className={`p-4 ${isMain("primaEfecto") ? "h-[420px]" : "h-[260px]"}`}>
+                <PrimaEfectoChart
+                  aseguradora={aseguradora}
+                  ramo={ramo}
+                  usuario={usuario}
+                />
+              </div>
+            </div>
+
+            {/* PRIMA CREATED */}
+            <div key="primaCreated" className={CARD}>
+              <div className="flex justify-between items-center px-6 py-3 border-b bg-slate-50">
+
+                <span className="font-medium">Primas · Registro</span>
+
+                {!isMain("primaCreated") && (
+                  <button
+                    onClick={() => makeMain("primaCreated")}
+                    className="text-xs bg-slate-200 px-3 py-1 rounded-lg hover:bg-slate-300 transition"
+                  >
+                    Principal
+                  </button>
+                )}
+
+              </div>
+
+              <div className={`p-4 ${isMain("primaCreated") ? "h-[420px]" : "h-[260px]"}`}>
+                <PrimaCreatedChart
+                  aseguradora={aseguradora}
+                  ramo={ramo}
+                  usuario={usuario}
+                />
+              </div>
+            </div>
+
+          </GridLayout>
+        )}
+
+        {view === "facturacion" && (
+
+          <GridLayout
+            layout={[
+              { i: "facturacion", x: 0, y: 0, w: 6, h: 9 },
+              { i: "produccion", x: 6, y: 0, w: 6, h: 9 },
+            ]}
+            cols={12}
+            rowHeight={38}
+            width={1400}
+            margin={[24, 24]}
+            containerPadding={[0, 0]}
+            isResizable={false}
+          >
+
+            {/* FACTURACION */}
+            <div key="facturacion" className={CARD}>
+              <div className="px-6 py-3 border-b bg-slate-50 font-medium">
+                Facturación mensual
+              </div>
+
+              <div className="p-4 h-[420px]">
+                <Facturacion3AniosChart />
+              </div>
+            </div>
+
+            {/* PRODUCCION */}
+            <div key="produccion" className={CARD}>
+              <div className="px-6 py-3 border-b bg-slate-50 font-medium">
+                Nueva producción vs Renovaciones
+              </div>
+
+              <div className="p-4 h-[420px]">
+                <ProduccionRenovacionesChart />
+              </div>
+            </div>
+
+          </GridLayout>
+
+        )}
+
       </div>
     </div>
   );

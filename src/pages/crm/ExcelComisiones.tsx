@@ -1,7 +1,8 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
+
 
 type ResumenCalculo = {
-  abonos: number;
+  
   extornos: number;
   base: number;
   irpf: number;
@@ -27,7 +28,18 @@ type BackendResponse = {
   message?: string;
 };
 
-export default function ExcelComisiones() {
+type FacturaProgress = {
+  porcentaje: number;
+  texto: string;
+};
+
+type ExcelComisionesProps = {
+  facturaProgress?: FacturaProgress | null;
+};
+
+export default function ExcelComisiones({
+  facturaProgress,
+}: ExcelComisionesProps) {
   const [resumen, setResumen] = useState<ResumenCalculo | null>(null);
   const [datosFactura, setDatosFactura] = useState<DatosFactura | null>(null);
   const [logs, setLogs] = useState<string[]>([]);
@@ -35,11 +47,30 @@ export default function ExcelComisiones() {
   const [liquidoCalculado, setLiquidoCalculado] = useState<number | null>(null);
   const [usandoLiquidoOficial, setUsandoLiquidoOficial] = useState(false);
 
+  const [progress, setProgress] = useState(0);
+const [progressText, setProgressText] = useState("");
+const socketProgressRef = useRef(false);
+
+useEffect(() => {
+  if (!facturaProgress) return;
+
+  console.log("🔥 PROGRESO FACTURA EN EXCEL:", facturaProgress);
+
+  socketProgressRef.current = true;
+
+  setLoading(true);
+  setProgress(Number(facturaProgress.porcentaje || 0));
+  setProgressText(facturaProgress.texto || "Procesando PDF...");
+}, [facturaProgress]);
+
   const handleFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
     setLoading(true);
+    setProgress(5);
+    setProgressText("Subiendo archivo...");
+    socketProgressRef.current = false;
     setResumen(null);
     setDatosFactura(null);
     setLogs([]);
@@ -55,9 +86,27 @@ export default function ExcelComisiones() {
     }
 
     const formData = new FormData();
-    formData.append("file", file);
+formData.append("file", file);
 
-    try {
+let fakeProgress = 5;
+
+const progressInterval = setInterval(() => {
+  if (socketProgressRef.current) return;
+
+  fakeProgress += Math.random() * 8;
+
+  if (fakeProgress < 35) {
+    setProgressText("Leyendo PDF...");
+  } else if (fakeProgress < 70) {
+    setProgressText("Extrayendo datos...");
+  } else if (fakeProgress < 92) {
+    setProgressText("Calculando importes...");
+  }
+
+  setProgress(Math.min(fakeProgress, 92));
+}, 600);
+
+try {
       const response = await fetch(
         `${import.meta.env.VITE_API_URL}/api/crm/facturas/procesar`,
         {
@@ -69,21 +118,37 @@ export default function ExcelComisiones() {
         }
       );
 
-      const data: BackendResponse = await response.json();
+     const data: BackendResponse = await response.json();
 
-      if (!response.ok) {
-        setLogs([
-          `❌ ${data.message || data.error || "Error servidor"}`,
-        ]);
-        setLoading(false);
-        return;
-      }
+clearInterval(progressInterval);
+setProgress(100);
+setProgressText("Proceso completado");
+
+if (!response.ok) {
+
+  clearInterval(progressInterval);
+  setProgress(0);
+  setProgressText("");
+
+  setLogs([
+    `❌ ${data.message || data.error || "Error servidor"}`,
+  ]);
+
+  setLoading(false);
+  return;
+}
 
       if (data.error) {
-        setLogs([`❌ ${data.error}`]);
-        setLoading(false);
-        return;
-      }
+
+  clearInterval(progressInterval);
+  setProgress(0);
+  setProgressText("");
+
+  setLogs([`❌ ${data.error}`]);
+
+  setLoading(false);
+  return;
+}
 
       setResumen(data.resumen ?? null);
       setDatosFactura(data.datosFactura ?? null);
@@ -99,10 +164,19 @@ export default function ExcelComisiones() {
       }
 
     } catch (error) {
-      setLogs(["❌ Error procesando archivo"]);
-    }
 
-    setLoading(false);
+  clearInterval(progressInterval);
+  setProgress(0);
+  setProgressText("");
+
+  setLogs(["❌ Error procesando archivo"]);
+}
+
+    setTimeout(() => {
+  setLoading(false);
+  setProgress(0);
+  setProgressText("");
+}, 600);
   };
 
   return (
@@ -140,10 +214,39 @@ export default function ExcelComisiones() {
         />
 
         {loading && (
-          <div style={{ marginTop: 15, fontSize: 14, color: "#555" }}>
-            Procesando archivo...
-          </div>
-        )}
+  <div style={{ marginTop: 20 }}>
+    <div
+      style={{
+        fontSize: 14,
+        color: "#555",
+        marginBottom: 8,
+        fontWeight: 600,
+      }}
+    >
+      {progressText} {Math.round(progress)}%
+    </div>
+
+    <div
+      style={{
+        width: "100%",
+        height: 12,
+        background: "#e5e7eb",
+        borderRadius: 999,
+        overflow: "hidden",
+      }}
+    >
+      <div
+        style={{
+          width: `${progress}%`,
+          height: "100%",
+          background: "linear-gradient(90deg, #22c55e, #16a34a)",
+          borderRadius: 999,
+          transition: "width 0.4s ease",
+        }}
+      />
+    </div>
+  </div>
+)}
       </div>
 
       {/* DATOS FACTURA */}
@@ -211,7 +314,7 @@ export default function ExcelComisiones() {
           }}
         >
           {[
-            { label: "Abonos", value: resumen.abonos },
+            
             { label: "Extornos", value: resumen.extornos },
             { label: "Base Fiscal", value: resumen.base },
             { label: "IRPF (15%)", value: resumen.irpf },
@@ -299,9 +402,38 @@ export default function ExcelComisiones() {
             overflowY: "auto",
           }}
         >
-          {logs.map((log, i) => (
-            <div key={i}>{log}</div>
-          ))}
+         {(() => {
+  let dentroResumenPdf = false;
+
+  return logs.map((log, i) => {
+    const texto = log.trim();
+
+    if (texto.includes("----- CONCEPTOS RESUMEN PDF -----")) {
+      dentroResumenPdf = true;
+    }
+
+    const esLineaDetalle =
+      dentroResumenPdf && texto.startsWith("- ");
+
+    if (texto === "--------------------------------") {
+      dentroResumenPdf = false;
+    }
+
+    return (
+      <div
+        key={i}
+        style={{
+          color: esLineaDetalle ? "#cfd8dc" : "#00ff66",
+          fontWeight: esLineaDetalle ? 500 : 600,
+          paddingLeft: esLineaDetalle ? 14 : 0,
+          opacity: esLineaDetalle ? 0.95 : 1,
+        }}
+      >
+        {log}
+      </div>
+    );
+  });
+})()}
         </div>
       )}
     </div>

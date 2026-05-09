@@ -5,7 +5,7 @@ import {
   Navigate,
   useNavigate,
 } from "react-router-dom";
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 
 /* ===== CRM ===== */
 import LibroVentas from "./pages/crm/LibroVentas";
@@ -36,6 +36,10 @@ import { getSocket } from "./services/socket";
 ====================================================== */
 function AppInner() {
   const navigate = useNavigate();
+  const [facturaProgress, setFacturaProgress] = useState<{
+  porcentaje: number;
+  texto: string;
+} | null>(null);
 
   useEffect(() => {
     const socket = getSocket();
@@ -70,11 +74,17 @@ function AppInner() {
       navigate("/laboral/control-horario", { replace: true });
     });
 
+    socket.on("factura_progreso", (data: { porcentaje: number; texto: string }) => {
+  console.log("🔥 PROGRESO FACTURA APP:", data);
+  setFacturaProgress(data);
+});
+
     return () => {
       socket.off("connect");
       socket.off("connect_error");
       socket.off("SOLICITUD_RESUELTA");
       socket.off("FORCE_LOGOUT");
+socket.off("factura_progreso");
     };
   }, [navigate]);
 
@@ -160,7 +170,7 @@ function AppInner() {
           path="/crm/excel-comisiones"
           element={
             <ProtectedRoute adminOnly>
-              <ExcelComisiones />
+              <ExcelComisiones facturaProgress={facturaProgress} />
             </ProtectedRoute>
           }
         />

@@ -12,31 +12,57 @@ export const getSocket = () => {
   }
 
   if (!socket) {
+
+    console.log(
+      "🔌 SOCKET URL:",
+      import.meta.env.VITE_API_URL
+    );
+
     socket = io(import.meta.env.VITE_API_URL, {
       withCredentials: true,
-      transports: ["websocket", "polling"],
+      path: "/socket.io",
+
+      // 🔥 SOLO POLLING TEMPORALMENTE
+      transports: ["polling"],
+
       auth: {
         userId: parsedUser.id,
         token,
       },
     });
 
-    // 🔍 DEBUG TEMPORAL (NO MOLESTA)
+    // 🔍 DEBUG
     socket.on("connect", () => {
-      console.log("🟢 SOCKET CONECTADO", socket?.id, parsedUser.id);
+      console.log(
+        "🟢 SOCKET CONECTADO",
+        socket?.id,
+        parsedUser.id
+      );
+    });
+
+    socket.on("connect_error", (error) => {
+      console.error(
+        "🔴 SOCKET CONNECT ERROR:",
+        error.message
+      );
     });
 
     socket.on("disconnect", (reason) => {
-      console.log("🔴 SOCKET DESCONECTADO", reason);
+      console.log(
+        "🔴 SOCKET DESCONECTADO",
+        reason
+      );
     });
+
   } else {
-    // 🔥 CLAVE ABSOLUTA: reinyectar auth SIEMPRE
+
+    // 🔥 REINYECTAR AUTH
     socket.auth = {
       userId: parsedUser.id,
       token,
     };
 
-    // 🔥 y reconectar si estaba zombie
+    // 🔥 RECONECTAR SI ESTÁ CAÍDO
     if (!socket.connected) {
       socket.connect();
     }
