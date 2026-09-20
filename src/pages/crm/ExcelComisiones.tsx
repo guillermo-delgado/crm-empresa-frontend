@@ -26,6 +26,9 @@ type BackendResponse = {
   logs?: string[];
   error?: string;
   message?: string;
+  sePuedeGuardar?: boolean;
+  requiereConfirmacionReemplazo?: boolean;
+  motivoReemplazo?: string;
 };
 
 type FacturaProgress = {
@@ -46,6 +49,8 @@ export default function ExcelComisiones({
   const [loading, setLoading] = useState(false);
   const [liquidoCalculado, setLiquidoCalculado] = useState<number | null>(null);
   const [usandoLiquidoOficial, setUsandoLiquidoOficial] = useState(false);
+  const [lastFile, setLastFile] = useState<File | null>(null);
+const [requiereReemplazo, setRequiereReemplazo] = useState(false);
 
   const [progress, setProgress] = useState(0);
 const [progressText, setProgressText] = useState("");
@@ -63,121 +68,144 @@ useEffect(() => {
   setProgressText(facturaProgress.texto || "Procesando PDF...");
 }, [facturaProgress]);
 
-  const handleFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
+const procesarArchivo = async (file: File, replace = false) => {
+  setLastFile(file);
+  setRequiereReemplazo(false);
 
-    setLoading(true);
-    setProgress(5);
-    setProgressText("Subiendo archivo...");
-    socketProgressRef.current = false;
-    setResumen(null);
-    setDatosFactura(null);
-    setLogs([]);
-    setLiquidoCalculado(null);
-    setUsandoLiquidoOficial(false);
+  setLoading(true);
+  setProgress(5);
+  setProgressText(
+    replace ? "Reemplazando factura..." : "Subiendo archivo..."
+  );
+  socketProgressRef.current = false;
+  setResumen(null);
+  setDatosFactura(null);
+  setLogs([]);
+  setLiquidoCalculado(null);
+  setUsandoLiquidoOficial(false);
 
-    const token = localStorage.getItem("token");
+  const token = localStorage.getItem("token");
 
-    if (!token) {
-      setLogs(["❌ No hay sesión activa"]);
+  if (!token) {
+    setLogs(["❌ No hay sesión activa"]);
+    setLoading(false);
+    return;
+  }
+
+  const formData = new FormData();
+  formData.append("file", file);
+
+  if (replace) {
+    formData.append("replace", "true");
+  }
+
+  let fakeProgress = 5;
+
+  const progressInterval = setInterval(() => {
+    if (socketProgressRef.current) return;
+
+    fakeProgress += Math.random() * 8;
+
+    if (fakeProgress < 35) {
+      setProgressText("Leyendo PDF...");
+    } else if (fakeProgress < 70) {
+      setProgressText("Extrayendo datos...");
+    } else if (fakeProgress < 92) {
+      setProgressText("Calculando importes...");
+    }
+
+    setProgress(Math.min(fakeProgress, 92));
+  }, 600);
+
+  try {
+    const response = await fetch(
+      `${import.meta.env.VITE_API_URL}/api/crm/facturas/procesar`,
+      {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+        body: formData,
+      }
+    );
+
+    const data: BackendResponse = await response.json();
+
+    clearInterval(progressInterval);
+    setProgress(100);
+    setProgressText("Proceso completado");
+
+    if (!response.ok) {
+      clearInterval(progressInterval);
+      setProgress(0);
+      setProgressText("");
+
+      setLogs([
+        `❌ ${data.message || data.error || "Error servidor"}`,
+      ]);
+
       setLoading(false);
       return;
     }
 
-    const formData = new FormData();
-formData.append("file", file);
+    if (data.error) {
+      clearInterval(progressInterval);
+      setProgress(0);
+      setProgressText("");
 
-let fakeProgress = 5;
+      setLogs([`❌ ${data.error}`]);
 
-const progressInterval = setInterval(() => {
-  if (socketProgressRef.current) return;
+      setLoading(false);
+      return;
+    }
 
-  fakeProgress += Math.random() * 8;
-
-  if (fakeProgress < 35) {
-    setProgressText("Leyendo PDF...");
-  } else if (fakeProgress < 70) {
-    setProgressText("Extrayendo datos...");
-  } else if (fakeProgress < 92) {
-    setProgressText("Calculando importes...");
-  }
-
-  setProgress(Math.min(fakeProgress, 92));
-}, 600);
-
-try {
-      const response = await fetch(
-        `${import.meta.env.VITE_API_URL}/api/crm/facturas/procesar`,
-        {
-          method: "POST",
-          headers: {
-            Authorization: `Bearer ${token}`,
-          },
-          body: formData,
-        }
-      );
-
-     const data: BackendResponse = await response.json();
-
-clearInterval(progressInterval);
-setProgress(100);
-setProgressText("Proceso completado");
-
-if (!response.ok) {
-
-  clearInterval(progressInterval);
-  setProgress(0);
-  setProgressText("");
-
-  setLogs([
-    `❌ ${data.message || data.error || "Error servidor"}`,
-  ]);
-
-  setLoading(false);
-  return;
-}
-
-      if (data.error) {
-
-  clearInterval(progressInterval);
-  setProgress(0);
-  setProgressText("");
-
-  setLogs([`❌ ${data.error}`]);
-
-  setLoading(false);
-  return;
-}
-
+    if (data.requiereConfirmacionReemplazo) {
       setResumen(data.resumen ?? null);
       setDatosFactura(data.datosFactura ?? null);
       setLogs(Array.isArray(data.logs) ? data.logs : []);
+      setRequiereReemplazo(true);
 
-      const logString = (data.logs || []).join(" ");
-      const usoOficial = logString.includes("Se usa el líquido oficial");
-      setUsandoLiquidoOficial(usoOficial);
+      setLoading(false);
+      setProgress(0);
+      setProgressText("");
 
-      const match = logString.match(/Líquido calculado: ([\d\.]+) €/);
-      if (match) {
-        setLiquidoCalculado(parseFloat(match[1]));
-      }
+      return;
+    }
 
-    } catch (error) {
+    setResumen(data.resumen ?? null);
+    setDatosFactura(data.datosFactura ?? null);
+    setLogs(Array.isArray(data.logs) ? data.logs : []);
 
-  clearInterval(progressInterval);
-  setProgress(0);
-  setProgressText("");
+    const logString = (data.logs || []).join(" ");
+    const usoOficial = logString.includes("Se usa el líquido oficial");
+    setUsandoLiquidoOficial(usoOficial);
 
-  setLogs(["❌ Error procesando archivo"]);
-}
+    const match = logString.match(/Líquido calculado: ([\d\.]+) €/);
+    if (match) {
+      setLiquidoCalculado(parseFloat(match[1]));
+    }
 
-    setTimeout(() => {
-  setLoading(false);
-  setProgress(0);
-  setProgressText("");
-}, 600);
-  };
+  } catch (error) {
+    clearInterval(progressInterval);
+    setProgress(0);
+    setProgressText("");
+
+    setLogs(["❌ Error procesando archivo"]);
+  }
+
+  setTimeout(() => {
+    setLoading(false);
+    setProgress(0);
+    setProgressText("");
+  }, 600);
+};
+
+const handleFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
+  const file = e.target.files?.[0];
+  if (!file) return;
+
+  await procesarArchivo(file, false);
+};
 
   return (
     <div style={{ padding: 40, fontFamily: "Inter, sans-serif" }}>
@@ -202,16 +230,39 @@ if (!response.ok) {
         </div>
 
         <input
-          type="file"
-          accept=".pdf,.xls,.xlsx"
-          onChange={handleFile}
-          style={{
-            padding: 10,
-            borderRadius: 10,
-            border: "1px solid #ccc",
-            cursor: "pointer",
-          }}
-        />
+  type="file"
+  accept=".pdf,.xls,.xlsx"
+  onChange={handleFile}
+  style={{
+    padding: 10,
+    borderRadius: 10,
+    border: "1px solid #ccc",
+    cursor: "pointer",
+  }}
+/>
+
+{requiereReemplazo && lastFile && (
+  <div style={{ marginTop: 20 }}>
+    <button
+      type="button"
+      onClick={() => {
+  setRequiereReemplazo(false);
+  procesarArchivo(lastFile, true);
+}}
+      style={{
+        background: "#dc2626",
+        color: "white",
+        border: "none",
+        padding: "12px 18px",
+        borderRadius: 12,
+        cursor: "pointer",
+        fontWeight: 700,
+      }}
+    >
+      Reemplazar factura existente
+    </button>
+  </div>
+)}
 
         {loading && (
   <div style={{ marginTop: 20 }}>

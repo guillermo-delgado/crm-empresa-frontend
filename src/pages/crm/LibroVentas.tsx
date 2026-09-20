@@ -1,15 +1,14 @@
 import { useEffect, useMemo, useState } from "react";
-import KPICard from "../../components/crm/KPICard";
+import type { Dispatch, SetStateAction } from "react";
+
 import VentasTable from "../../components/crm/VentasTable";
 import InfoModal from "../../components/common/InfoModal";
 import EditVentaModal from "../../components/ventas/EditVentaModal";
 import ConfirmModal from "../../components/common/ConfirmModal";
 import VentasGlobalSearch from "../../components/crm/VentasGlobalSearch";
 import VentasTableSkeleton from "../../components/crm/skeletons/VentasTableSkeleton";
-import KPICardSkeleton from "../../components/crm/skeletons/KPICardSkeleton";
-import ProduccionRamoSkeleton from "../../components/crm/skeletons/ProduccionRamoSkeleton";
+
 import VentasSearchSkeleton from "../../components/crm/skeletons/VentasSearchSkeleton";
-import PeriodoSelectorSkeleton from "../../components/crm/skeletons/PeriodoSelectorSkeleton";
 import { registerVentasSocketHandlers } from "../../services/ventasSocketHandlers";
 import api from "../../services/api";
 import { useNavigate, useOutletContext } from "react-router-dom";
@@ -20,13 +19,20 @@ import autoTable from "jspdf-autotable";
 import { getSocket } from "../../services/socket";
 import AnularVentaModal from "../../components/ventas/AnularVentaModal";
 import RehabilitarVentaModal from "../../components/ventas/RehabilitarVentaModal";
+import DashboardKpis from "../crm/DashboardKpis";
 
 
 
 
 type VentaAPI = {
   _id: string;
+
+  // Fecha de efecto / emisión
   fechaEfecto: string;
+
+  // Fecha de registro de la venta
+  createdAt?: string;
+
   numeroPoliza: string;
   tomador: string;
   aseguradora: string;
@@ -34,11 +40,10 @@ type VentaAPI = {
   primaNeta: number;
   formaPago?: string;
 
- createdBy?: {
-  _id: string;
-  nombre: string;
-};
-
+  createdBy?: {
+    _id: string;
+    nombre: string;
+  };
 
   estadoRevision?: "pendiente" | "aceptada" | "rechazada" | null;
 
@@ -62,7 +67,7 @@ type VentaAEliminar = VentaAPI & {
 
 
 type LayoutContext = {
-  setRevisionCount: React.Dispatch<React.SetStateAction<number>>;
+  setRevisionCount: Dispatch<SetStateAction<number>>;
 };
 const CARD = "bg-white border border-slate-200 rounded-[12px] ";
 
@@ -88,13 +93,23 @@ try {
   const [mes, setMes] = useState(now.getMonth() + 1);
   const [anio, setAnio] = useState(now.getFullYear());
 
+  // =========================
+// MODO DE CONSULTA DE FECHA
+// =========================
+
+// Solo el administrador puede cambiar el modo.
+// Los empleados mantienen el comportamiento actual.
+const [modoFecha] = useState<
+  "efecto" | "venta"
+>("efecto");
+
 // BUSCADOR
   const [search, setSearch] = useState("");
   const searchActive = search.trim().length >= 2;
 
 const [ventasBusqueda, setVentasBusqueda] = useState<VentaAPI[] | null>(null);
-const [loadingBusqueda, setLoadingBusqueda] = useState(false);
-loadingBusqueda;
+const [, setLoadingBusqueda] = useState(false);
+
 
 const [diaHasta, setDiaHasta] = useState<number | null>(null);
 
@@ -155,29 +170,7 @@ useEffect(() => {
 
 
   const [ventas, setVentas] = useState<VentaAPI[]>([]);
-  // 🔔 BADGE EMPLEADO – EXACTAMENTE COMO EL CÓDIGO ANTIGUO
-// useEffect(() => {
-//   if (isAdmin) return;
-
-//   const notificar = ventas.filter(
-//     v =>
-//       v.estadoRevision === "aceptada" ||
-//       v.estadoRevision === "rechazada"
-//   ).length;
-
-//   setRevisionCount(notificar);
-// }, [ventas, isAdmin]);
-
-
-  // useEffect(() => {
-  // if (isAdmin) return;
-
-//   const pendientes = ventas.filter(
-//     v => v.estadoRevision === "pendiente" || v.estadoRevision === "aceptada" || v.estadoRevision === "rechazada"
-//   ).length;
-
-//   setRevisionCount(pendientes);
-// }, [ventas, isAdmin]);
+ 
 
   const [loading, setLoading] = useState(false);
 
@@ -195,6 +188,7 @@ const [loadingKpis, setLoadingKpis] = useState(false);
 
 const fetchKPIs = async () => {
   setLoadingKpis(true);
+
   try {
     const res = await api.get("/ventas/kpis", {
       params: {
@@ -204,8 +198,13 @@ const fetchKPIs = async () => {
         ramo,
         usuario,
         diaHasta,
+
+        modoFecha: isAdmin
+          ? modoFecha
+          : "efecto",
       },
     });
+
     setKpis(res.data);
   } catch {
     setKpis(null);
@@ -239,34 +238,52 @@ const cargarSolicitudes = async () => {
 
 
   const fetchLibroVentas = async () => {
-    
+  setLoading(true);
 
-    setLoading(true);
-    try {
-      const res = await api.get(`/ventas/libro`, {
-  params: {
-    month: mes,
-    year: anio,
-    diaHasta,
-  },
-});
+  try {
+    const res = await api.get("/ventas/libro", {
+      params: {
+        month: mes,
+        year: anio,
+        diaHasta,
 
-      setVentas(Array.isArray(res.data.ventas) ? res.data.ventas : []);
-    } catch (e) {
-      console.error("Error cargando libro de ventas", e);
-    } finally {
-      setLoading(false);
-    }
-  };
+        // El empleado siempre usa fecha de efecto.
+        // El administrador puede elegir.
+        modoFecha: isAdmin ? modoFecha : "efecto",
+      },
+    });
+
+    setVentas(
+      Array.isArray(res.data.ventas)
+        ? res.data.ventas
+        : []
+    );
+  } catch (e) {
+    console.error(
+      "Error cargando libro de ventas",
+      e
+    );
+  } finally {
+    setLoading(false);
+  }
+};
 
 // 1️⃣ Cargar ventas al cambiar periodo
 useEffect(() => {
   fetchLibroVentas();
-},  [mes, anio, diaHasta]);
+}, [mes, anio, diaHasta, modoFecha]);
 
 useEffect(() => {
   fetchKPIs();
-}, [mes, anio, aseguradora, ramo, usuario, diaHasta]);
+}, [
+  mes,
+  anio,
+  aseguradora,
+  ramo,
+  usuario,
+  diaHasta,
+  modoFecha,
+]);
 
 
 // 2️⃣ Cargar solicitudes pendientes al entrar (ADMIN)
@@ -275,21 +292,7 @@ useEffect(() => {
   cargarSolicitudes();
 }, [isAdmin]);
 
-// 🔔 Cargar revisiones pendientes al entrar (EMPLEADO)
-// useEffect(() => {
-//   if (isAdmin) return;
 
-//   const cargarRevisionesEmpleado = async () => {
-//     try {
-//       const res = await api.get("/ventas/revisiones-pendientes");
-//       setRevisionCount(res.data?.count ?? 0);
-//     } catch {
-//       setRevisionCount(0);
-//     }
-//   };
-
-//   cargarRevisionesEmpleado();
-// }, [isAdmin]);
 
 // 3️⃣ Socket tiempo real
 useEffect(() => {
@@ -446,12 +449,101 @@ const ventasFiltradas = useMemo(() => {
     0
   );
 
-  const produccionPorRamo = useMemo(() => {
-    return ventasFiltradas.reduce<Record<string, number>>((acc, v) => {
-      acc[v.ramo] = (acc[v.ramo] || 0) + v.primaNeta;
-      return acc;
-    }, {});
-  }, [ventasFiltradas]);
+const produccionPorRamo = useMemo(() => {
+  return ventasFiltradas.reduce<Record<string, number>>((acc, v) => {
+    acc[v.ramo] = (acc[v.ramo] || 0) + v.primaNeta;
+    return acc;
+  }, {});
+}, [ventasFiltradas]);
+
+const ventasPorDia = useMemo(() => {
+  const resultado: Record<
+    string,
+    { ventas: number; total: number }
+  > = {};
+
+  ventasFiltradas.forEach((v) => {
+    const fecha =
+      modoFecha === "venta"
+        ? v.createdAt
+        : v.fechaEfecto;
+
+    if (!fecha) return;
+
+    const dia = new Date(fecha).getDate();
+    const clave = String(dia);
+
+    if (!resultado[clave]) {
+      resultado[clave] = {
+        ventas: 0,
+        total: 0,
+      };
+    }
+
+    resultado[clave].ventas += 1;
+    resultado[clave].total += v.primaNeta;
+  });
+
+  return Object.entries(resultado)
+    .map(([dia, datos]) => ({
+      dia: Number(dia),
+      ...datos,
+    }))
+    .sort((a, b) => a.dia - b.dia);
+}, [ventasFiltradas, modoFecha]);
+
+
+
+{/* VENTAS DIARIAS */}
+<div className={`${CARD} p-5 shadow-sm`}>
+  <h3 className="mb-4 text-sm font-semibold text-slate-900">
+    Actividad comercial diaria
+    <span className="text-slate-500">
+      {" "}({modoFecha === "venta"
+        ? "pólizas registradas"
+        : "fecha de efecto"})
+    </span>
+  </h3>
+
+  <div className="space-y-3">
+    {ventasPorDia.map((dia) => (
+      <div key={dia.dia}>
+        <div className="mb-1 flex items-center justify-between">
+          <span className="text-xs text-slate-600">
+            Día {dia.dia}
+          </span>
+
+          <span className="text-xs font-semibold text-slate-800">
+            {dia.total.toLocaleString("es-ES", {
+              minimumFractionDigits: 2,
+              maximumFractionDigits: 2,
+            })} €
+          </span>
+
+          <span className="text-xs text-slate-500">
+            {dia.ventas} ventas
+          </span>
+        </div>
+
+        <div className="h-2 overflow-hidden rounded-full bg-slate-100">
+          <div
+            className="h-full rounded-full bg-blue-600"
+            style={{
+              width: `${
+                (dia.total /
+                  Math.max(
+                    ...ventasPorDia.map((d) => d.total),
+                    1
+                  )) *
+                100
+              }%`,
+            }}
+          />
+        </div>
+      </div>
+    ))}
+  </div>
+</div>
 
   const aseguradoras = Array.from(new Set(ventas.map(v => v.aseguradora)));
   const usuarios = Array.from(
@@ -489,7 +581,12 @@ const ventasFiltradas = useMemo(() => {
     wsResumen["!cols"] = [{ wch: 30 }, { wch: 25 }];
 
     const ventasData = ventasFiltradas.map(v => ({
-      Fecha: new Date(v.fechaEfecto).toLocaleDateString(),
+      fechaEfecto: v.fechaEfecto
+        ? new Date(v.fechaEfecto).toLocaleDateString("es-ES")
+        : "-",
+      fechaVenta: v.createdAt
+        ? new Date(v.createdAt).toLocaleDateString("es-ES")
+        : "-",
       Póliza: v.numeroPoliza,
       Tomador: v.tomador,
       Aseguradora: v.aseguradora,
@@ -534,7 +631,9 @@ const ventasFiltradas = useMemo(() => {
       startY: y + 20,
       head: [["Fecha", "Póliza", "Tomador", "Aseguradora", "Ramo", "Prima", "Usuario"]],
       body: ventasFiltradas.map(v => [
-        new Date(v.fechaEfecto).toLocaleDateString(),
+        v.fechaEfecto
+          ? new Date(v.fechaEfecto).toLocaleDateString("es-ES")
+          : "-",
         v.numeroPoliza,
         v.tomador,
         v.aseguradora,
@@ -548,91 +647,68 @@ const ventasFiltradas = useMemo(() => {
   };
 
   return (
-    <div className="p-6 space-y-6 bg-slate-50 min-h-screen">
+   <div className="min-h-screen space-y-6 bg-slate-50 p-4 sm:p-6">
 
-      <div>
-        <h1 className="text-2xl font-semibold">CRM · Libro de ventas</h1>
-        <p className="text-sm text-slate-500">Control mensual de producción</p>
-      </div>
-
-       
-
-      {/* AVISO ADMIN */}
-     {isAdmin && solicitudes.length > 0 && (
-  <div className="bg-yellow-100 border border-yellow-300 text-yellow-800 px-4 py-3 rounded">
-    ⚠️ Tienes solicitudes de empleados pendientes de revisión
-  </div>
-)}
-
-
-      {/* KPIs */}
-     <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-  {loadingKpis ? (
-  <>
-    <KPICardSkeleton />
-    <PeriodoSelectorSkeleton />
-    <ProduccionRamoSkeleton />
-  </>
-) : (
-
-    <>
-   <KPICard
-  title="Producción total"
-
-  value={`${kpis?.produccion?.actual?.toFixed(2) ?? "0.00"} €`}
-  variationPct={kpis?.produccion?.variacionPct}
-  delta={kpis?.polizas?.delta}
-
-  valueCreated={`${kpis?.produccionCreated?.actual?.toFixed(2) ?? "0.00"} €`}
-  variationPctCreated={kpis?.produccionCreated?.variacionPct}
-  deltaCreated={kpis?.polizasCreated?.delta}
-
-  isAdmin={isAdmin}
-/>
-
-
-
-
-
-      <PeriodoSelector
-        mes={mes}
-        anio={anio}
-        setMes={setMes}
-        setAnio={setAnio}
-        minPeriodo={minPeriodo}
-        maxPeriodo={maxPeriodo}
-      />
-
-      <div className={`${CARD} p-6`}>
-        <h4 className="text-xs font-semibold text-slate-500 mb-2">
-          Producción por ramo
-        </h4>
-
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-          {Object.entries(produccionPorRamo).map(([r, total]) => (
-            <div
-              key={r}
-              className="border border-slate-200 rounded-md px-3 py-2"
-            >
-              <p className="text-xs text-slate-500 truncate">{r}</p>
-              <p className="text-sm font-semibold text-slate-800 mt-1">
-                {total.toFixed(2)} €
-              </p>
-            </div>
-          ))}
-        </div>
-      </div>
-    </>
+  {/* AVISO ADMIN */}
+  {isAdmin && solicitudes.length > 0 && (
+    <div className="rounded-lg border border-yellow-300 bg-yellow-100 px-4 py-3 text-yellow-800">
+      ⚠️ Tienes solicitudes de empleados pendientes de revisión
+      {solicitudes.length > 0 && ` (${solicitudes.length})`}
+    </div>
   )}
+
+  {/* CABECERA */}
+  <div className="grid grid-cols-1 items-center gap-4 md:grid-cols-[1fr_auto_1fr]">
+
+    {/* TÍTULO - IZQUIERDA */}
+    <div className="text-center md:text-left">
+      <h1 className="text-2xl font-semibold text-slate-900">
+        CRM · Libro de ventas
+      </h1>
+
+      <p className="mt-1 text-sm text-slate-500">
+        Control mensual de producción
+      </p>
+    </div>
+
+   {/* SELECTOR DE PERIODO - CENTRO */}
+<div className="flex justify-center">
+  <PeriodoSelector
+    mes={mes}
+    anio={anio}
+    setMes={setMes}
+    setAnio={setAnio}
+    minPeriodo={minPeriodo}
+    maxPeriodo={maxPeriodo}
+  />
 </div>
 
+    {/* ESPACIO DERECHO PARA MANTENER EL CENTRADO */}
+    <div className="hidden md:block" />
 
+  </div>
+
+  {/* DASHBOARD KPIs */}
+{loadingKpis ? (
+  <div className="rounded-xl border border-slate-200 bg-white p-6 text-sm text-slate-500">
+    Cargando indicadores...
+  </div>
+) : (
+  <DashboardKpis
+    ventas={ventasFiltradas}
+    kpis={kpis}
+    isAdmin={isAdmin}
+    modoFecha={isAdmin ? modoFecha : "efecto"}
+    mes={mes}
+    anio={anio}
+  />
+)}
 
 {/* 🔍 BUSCADOR + FILTROS (ADMIN) */}
 {loading ? (
   <VentasSearchSkeleton />
 ) : (
-  <div className={`${CARD} p-6 space-y-4`}>
+  <div className={`${CARD} space-y-4 p-4 shadow-sm sm:p-6`}>
 
     {/* 🔍 BÚSQUEDA GLOBAL (TODOS) */}
     <VentasGlobalSearch
@@ -755,7 +831,13 @@ const ventasFiltradas = useMemo(() => {
       <VentasTable
        ventas={ventasFiltradas.map(v => ({
   _id: v._id,
-  fecha: new Date(v.fechaEfecto).toLocaleDateString(),
+  fecha: v.fechaEfecto
+    ? new Date(v.fechaEfecto).toLocaleDateString("es-ES")
+    : "-",
+
+  fechaVenta: v.createdAt
+    ? new Date(v.createdAt).toLocaleDateString("es-ES")
+    : "-",
   poliza: v.numeroPoliza,
   tomador: v.tomador,
   aseguradora: v.aseguradora,
@@ -872,7 +954,7 @@ onEdit={async (row) => {
 <div className="flex flex-wrap gap-3">
   <button
     onClick={() => navigate("/crm/nueva-venta")}
-    className="bg-slate-800 text-white px-4 py-2 rounded text-sm cursor-pointer"
+    className="rounded-lg bg-slate-800 px-4 py-2 text-sm font-medium text-white shadow-sm transition hover:bg-slate-900 cursor-pointer"
   >
     + Nueva venta
   </button>
@@ -881,14 +963,14 @@ onEdit={async (row) => {
     <>
       <button
         onClick={exportExcel}
-        className="border px-4 py-2 rounded text-sm cursor-pointer"
+        className="rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-700 shadow-sm transition hover:bg-slate-50 cursor-pointer"
       >
         Exportar Excel
       </button>
 
       <button
         onClick={exportPDF}
-        className="border px-4 py-2 rounded text-sm cursor-pointer"
+        className="rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-700 shadow-sm transition hover:bg-slate-50 cursor-pointer"
       >
         Exportar PDF
       </button>
@@ -1167,66 +1249,78 @@ function PeriodoSelector({
   minPeriodo,
   maxPeriodo,
 }: any) {
-  // const actual = new Date(anio, mes - 1, 1);
-
   const isAdmin =
     JSON.parse(localStorage.getItem("user") || "{}")?.role === "admin";
 
   const prevDate = new Date(anio, mes - 2, 1);
   const nextDate = new Date(anio, mes, 1);
 
-  const prevDisabled = !isAdmin && minPeriodo && prevDate < minPeriodo;
-  const nextDisabled = !isAdmin && maxPeriodo && nextDate > maxPeriodo;
+  const prevDisabled =
+    !isAdmin && minPeriodo && prevDate < minPeriodo;
+
+  const nextDisabled =
+    !isAdmin && maxPeriodo && nextDate > maxPeriodo;
 
   return (
-    <div className="bg-white border border-slate-200 rounded-xl px-6 py-4 flex items-center justify-between">
-      
-      {/* ◀ ANTERIOR */}
+    <div className="flex items-center gap-1">
+
+      {/* PERIODO ANTERIOR */}
       <button
+        type="button"
         disabled={prevDisabled}
         onClick={() => {
           setMes(prevDate.getMonth() + 1);
           setAnio(prevDate.getFullYear());
         }}
-        className="w-9 h-9 flex items-center justify-center
-                   rounded-full border border-slate-300
-                   text-slate-600 hover:bg-slate-100 hover:text-slate-900
-                   disabled:opacity-30 disabled:cursor-not-allowed transition"
+        className="
+          flex h-10 w-10 items-center justify-center
+          rounded-lg border border-slate-200
+          bg-white text-slate-600
+          transition hover:bg-slate-50 hover:text-slate-900
+          disabled:cursor-not-allowed disabled:opacity-30
+        "
         aria-label="Periodo anterior"
       >
-        <ChevronLeft size={18} />
+        <ChevronLeft size={20} strokeWidth={2} />
       </button>
 
-      {/* TEXTO */}
-      <div className="text-center select-none">
-        <p className="text-xs text-slate-500 uppercase tracking-wide">
-          Periodo
-        </p>
-        <p className="text-xl font-semibold text-slate-900 leading-tight">
+      {/* MES Y AÑO */}
+      <div
+        className="
+          flex h-10 min-w-[176px] items-center justify-center
+          rounded-lg border border-slate-200
+          bg-white px-4
+          select-none
+        "
+      >
+        <span className="whitespace-nowrap text-sm font-semibold text-slate-900">
           {mesNombre(mes)} {anio}
-        </p>
+        </span>
       </div>
 
-      {/* ▶ SIGUIENTE */}
+      {/* PERIODO SIGUIENTE */}
       <button
+        type="button"
         disabled={nextDisabled}
         onClick={() => {
           setMes(nextDate.getMonth() + 1);
           setAnio(nextDate.getFullYear());
         }}
-        className="w-9 h-9 flex items-center justify-center
-                   rounded-full border border-slate-300
-                   text-slate-600 hover:bg-slate-100 hover:text-slate-900
-                   disabled:opacity-30 disabled:cursor-not-allowed transition"
+        className="
+          flex h-10 w-10 items-center justify-center
+          rounded-lg border border-slate-200
+          bg-white text-slate-600
+          transition hover:bg-slate-50 hover:text-slate-900
+          disabled:cursor-not-allowed disabled:opacity-30
+        "
         aria-label="Periodo siguiente"
       >
-        <ChevronRight size={18} />
+        <ChevronRight size={20} strokeWidth={2} />
       </button>
 
     </div>
   );
 }
-
 
 
 const meses = [

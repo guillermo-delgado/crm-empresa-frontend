@@ -3,6 +3,7 @@ import { Trash2 } from "lucide-react";
 type Venta = {
   _id: string;
   fecha: string;
+  fechaVenta?: string;
   poliza: string;
   tomador: string;
   aseguradora: string;
@@ -227,7 +228,7 @@ export default function VentasTable({
           {ventas.length === 0 && (
             <tr>
               <td
-                colSpan={8}
+                colSpan={isAdmin ? 9 : 8}
                 className="px-4 py-6 text-center text-slate-400"
               >
                 No hay ventas para el periodo seleccionado
