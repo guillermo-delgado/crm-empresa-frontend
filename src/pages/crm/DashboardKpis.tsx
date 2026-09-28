@@ -28,11 +28,13 @@ type Venta = {
 
 type Props = {
   ventas: Venta[];
+  ventasProduccionSemanal?: Venta[];
   kpis: any;
   isAdmin: boolean;
   modoFecha: "efecto" | "venta";
   mes: number;
   anio: number;
+  onSemanaClick?: (ventaIds: string[] | null) => void;
 };
 
 const CARD =
@@ -233,159 +235,321 @@ function MaximizablePanel({
 
 function RamoDonut({
   datos,
-  total,
+  totalPolizas,
+  totalPrima,
   expanded = false,
 }: {
-  datos: Array<[string, number]>;
-  total: number;
+  datos: Array<[string, number, number]>;
+  totalPolizas: number;
+  totalPrima: number;
   expanded?: boolean;
 }) {
   const segmentos = useMemo(() => {
-    let acumulado = 0;
+    let acumuladoPolizas = 0;
+    let acumuladoPrima = 0;
 
-    return datos.map(([ramo, importe], index) => {
-      const porcentaje = total > 0 ? (importe / total) * 100 : 0;
-      const inicio = acumulado;
-      acumulado += porcentaje;
+    const primaTotal = datos.reduce((sum, [, , prima]) => sum + prima, 0);
+
+    return datos.map(([ramo, polizas, prima], index) => {
+      const porcentajePolizas =
+        totalPolizas > 0 ? (polizas / totalPolizas) * 100 : 0;
+      const porcentajePrima =
+        primaTotal > 0 ? (prima / primaTotal) * 100 : 0;
+
+      const polizasInicio = acumuladoPolizas;
+      acumuladoPolizas += porcentajePolizas;
+
+      const primaInicio = acumuladoPrima;
+      acumuladoPrima += porcentajePrima;
 
       return {
         ramo,
-        importe,
-        porcentaje,
-        inicio,
-        fin: acumulado,
+        polizas,
+        prima,
+        porcentajePolizas,
+        porcentajePrima,
+        polizasInicio,
+        polizasFin: acumuladoPolizas,
+        primaInicio,
+        primaFin: acumuladoPrima,
         color: coloresRamo[index % coloresRamo.length],
       };
     });
-  }, [datos, total]);
+  }, [datos, totalPolizas]);
 
-  const gradient =
+  const gradientPolizas =
     segmentos.length > 0
       ? `conic-gradient(${segmentos
-          .map(
-            (segmento) =>
-              `${segmento.color} ${segmento.inicio}% ${segmento.fin}%`
-          )
+          .map((s) => `${s.color} ${s.polizasInicio}% ${s.polizasFin}%`)
           .join(", ")})`
       : "#e2e8f0";
 
-  return (
+  const gradientPrima =
+    segmentos.length > 0
+      ? `conic-gradient(${segmentos
+          .map((s) => `${s.color} ${s.primaInicio}% ${s.primaFin}%`)
+          .join(", ")})`
+      : "#e2e8f0";
+
+  const Donut = ({
+    gradient,
+    value,
+    label,
+    compact = false,
+  }: {
+    gradient: string;
+    value: string | number;
+    label: string;
+    compact?: boolean;
+  }) => (
     <div
       className={
-        expanded
-          ? "grid w-full grid-cols-1 items-center gap-10 lg:grid-cols-[minmax(280px,0.9fr)_minmax(0,1.1fr)]"
-          : "grid w-full min-w-0 grid-cols-[minmax(130px,0.95fr)_minmax(0,1.05fr)] items-center gap-4"
+        compact
+          ? "relative h-[132px] w-[132px] shrink-0"
+          : "relative h-[210px] w-[210px] shrink-0"
       }
     >
-      <div className="flex min-w-0 items-center justify-center">
-        <div
+      <div
+        className="h-full w-full rounded-full"
+        style={{ background: gradient }}
+      />
+      <div
+        className={
+          compact
+            ? "absolute inset-[24%] flex flex-col items-center justify-center rounded-full bg-white text-center"
+            : "absolute inset-[25%] flex flex-col items-center justify-center rounded-full bg-white text-center"
+        }
+      >
+        <span
           className={
-            expanded
-              ? "relative aspect-square w-full max-w-[360px]"
-              : "relative aspect-square w-full max-w-[210px]"
+            compact
+              ? "text-lg font-bold leading-none text-slate-900"
+              : "whitespace-nowrap text-[15px] font-bold leading-tight tracking-[-0.03em] text-slate-900"
           }
         >
-          <div className="h-full w-full rounded-full" style={{ background: gradient }} />
-          <div
-            className={
-              expanded
-                ? "absolute inset-[24%] flex flex-col items-center justify-center rounded-full bg-white text-center"
-                : "absolute inset-[23%] flex flex-col items-center justify-center rounded-full bg-white px-1 text-center"
-            }
-          >
-            <span
-              className={
-                expanded
-                  ? "whitespace-nowrap text-3xl font-bold leading-none tracking-tight text-slate-900"
-                  : "whitespace-nowrap text-[clamp(10px,1vw,16px)] font-bold leading-none tracking-[-0.04em] text-slate-900"
-              }
+          {value}
+        </span>
+        <span
+          className={
+            compact
+              ? "mt-1 text-[10px] text-slate-500"
+              : "mt-1 text-xs text-slate-500"
+          }
+        >
+          {label}
+        </span>
+      </div>
+    </div>
+  );
+
+  if (!expanded) {
+    return (
+      <div className="grid w-full min-w-0 grid-cols-[132px_minmax(0,1fr)] items-center gap-4">
+        <Donut
+          gradient={gradientPolizas}
+          value={totalPolizas}
+          label="pólizas"
+          compact
+        />
+
+        <div className="min-w-0 space-y-2">
+          {segmentos.map((s) => (
+            <div
+              key={s.ramo}
+              className="grid min-w-0 grid-cols-[minmax(0,1fr)_auto_auto] items-center gap-2 text-xs"
             >
-              {euros(total)}
-            </span>
-            <span
-              className={
-                expanded
-                  ? "mt-3 text-base text-slate-500"
-                  : "mt-2 text-[clamp(9px,0.7vw,12px)] leading-none text-slate-500"
-              }
-            >
-              Total
-            </span>
+              <div className="flex min-w-0 items-center gap-2">
+                <span
+                  className="h-2.5 w-2.5 shrink-0 rounded-full"
+                  style={{ backgroundColor: s.color }}
+                />
+                <span className="truncate text-slate-600" title={s.ramo}>
+                  {s.ramo}
+                </span>
+              </div>
+              <span className="whitespace-nowrap font-semibold text-slate-700">
+                {s.polizas}
+              </span>
+              <span className="whitespace-nowrap text-slate-400">
+                ({s.porcentajePolizas.toFixed(1)}%)
+              </span>
+            </div>
+          ))}
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="w-full">
+      {/* Resumen superior */}
+      <div className="mb-6 grid grid-cols-2 gap-4">
+        <div className="rounded-xl border border-slate-200 bg-slate-50/70 px-5 py-4">
+          <div className="text-xs font-medium uppercase tracking-wide text-slate-500">
+            Pólizas
+          </div>
+          <div className="mt-1 text-2xl font-bold text-slate-900">
+            {totalPolizas}
+          </div>
+          <div className="mt-1 text-xs text-slate-500">
+            Distribución por número de pólizas
+          </div>
+        </div>
+
+        <div className="rounded-xl border border-slate-200 bg-slate-50/70 px-5 py-4">
+          <div className="text-xs font-medium uppercase tracking-wide text-slate-500">
+            Prima total
+          </div>
+          <div className="mt-1 text-2xl font-bold text-slate-900">
+            {euros(totalPrima)}
+          </div>
+          <div className="mt-1 text-xs text-slate-500">
+            Distribución económica
           </div>
         </div>
       </div>
 
-      <div className={expanded ? "min-w-0 space-y-6" : "min-w-0 space-y-4"}>
-        {segmentos.map((segmento) => (
-          <div
-            key={segmento.ramo}
-            className={
-              expanded
-                ? "grid grid-cols-[minmax(0,1fr)_auto] items-center gap-4"
-                : "grid min-w-0 grid-cols-[minmax(0,1fr)_auto] items-center gap-2"
-            }
-          >
-            <div className="flex min-w-0 items-center gap-3">
-              <span
-                className={expanded ? "h-4 w-4 shrink-0 rounded-full" : "h-3 w-3 shrink-0 rounded-full"}
-                style={{ backgroundColor: segmento.color }}
-              />
-              <span
-                className={
-                  expanded
-                    ? "min-w-0 break-words text-base text-slate-700"
-                    : "min-w-0 truncate text-[clamp(10px,0.75vw,13px)] text-slate-600"
-                }
-                title={segmento.ramo}
-              >
-                {segmento.ramo}
-              </span>
-            </div>
+      {/* Dos análisis independientes */}
+      <div className="grid grid-cols-1 gap-5 xl:grid-cols-2">
+        <div className="rounded-2xl border border-slate-200 bg-white p-5">
+          <div className="mb-4">
+            <h3 className="text-sm font-semibold text-slate-900">
+              Distribución por pólizas
+            </h3>
+            <p className="mt-1 text-xs text-slate-500">
+              Peso de cada ramo sobre el total de pólizas.
+            </p>
+          </div>
 
-            <div className="flex shrink-0 items-center gap-2 whitespace-nowrap">
-              <span
-                className={
-                  expanded
-                    ? "text-base font-semibold text-slate-800"
-                    : "text-[clamp(10px,0.75vw,13px)] font-semibold text-slate-700"
-                }
-              >
-                {euros(segmento.importe)}
-              </span>
-              <span className={expanded ? "text-base text-slate-400" : "text-[clamp(9px,0.7vw,12px)] text-slate-400"}>
-                ({segmento.porcentaje.toFixed(1)}%)
-              </span>
+          <div className="flex items-center gap-7">
+            <Donut
+              gradient={gradientPolizas}
+              value={totalPolizas}
+              label="pólizas"
+            />
+
+            <div className="min-w-0 flex-1 space-y-3">
+              {segmentos.map((s) => (
+                <div
+                  key={s.ramo}
+                  className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3"
+                >
+                  <div className="flex min-w-0 items-center gap-2">
+                    <span
+                      className="h-2.5 w-2.5 shrink-0 rounded-full"
+                      style={{ backgroundColor: s.color }}
+                    />
+                    <span
+                      className="truncate text-sm text-slate-700"
+                      title={s.ramo}
+                    >
+                      {s.ramo}
+                    </span>
+                  </div>
+                  <div className="text-right">
+                    <span className="text-sm font-semibold text-slate-900">
+                      {s.polizas}
+                    </span>
+                    <span className="ml-1 text-xs text-slate-400">
+                      ({s.porcentajePolizas.toFixed(1)}%)
+                    </span>
+                  </div>
+                </div>
+              ))}
             </div>
           </div>
-        ))}
+        </div>
+
+        <div className="rounded-2xl border border-slate-200 bg-white p-5">
+          <div className="mb-4">
+            <h3 className="text-sm font-semibold text-slate-900">
+              Distribución por prima
+            </h3>
+            <p className="mt-1 text-xs text-slate-500">
+              Peso económico de cada ramo sobre la prima total.
+            </p>
+          </div>
+
+          <div className="flex items-center gap-7">
+            <Donut
+              gradient={gradientPrima}
+              value={euros(totalPrima)}
+              label="prima"
+            />
+
+            <div className="min-w-0 flex-1 space-y-3">
+              {segmentos.map((s) => (
+                <div
+                  key={s.ramo}
+                  className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3"
+                >
+                  <div className="flex min-w-0 items-center gap-2">
+                    <span
+                      className="h-2.5 w-2.5 shrink-0 rounded-full"
+                      style={{ backgroundColor: s.color }}
+                    />
+                    <span
+                      className="truncate text-sm text-slate-700"
+                      title={s.ramo}
+                    >
+                      {s.ramo}
+                    </span>
+                  </div>
+                  <div className="text-right">
+                    <span className="text-sm font-semibold text-slate-900">
+                      {euros(s.prima)}
+                    </span>
+                    <span className="ml-1 text-xs text-slate-400">
+                      ({s.porcentajePrima.toFixed(1)}%)
+                    </span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
       </div>
     </div>
   );
 }
-
 function ProduccionSemanal({
   ventas,
   mes,
   anio,
   expanded = false,
+  onSemanaClick,
 }: {
   ventas: Venta[];
   mes: number;
   anio: number;
   expanded?: boolean;
+  onSemanaClick?: (ventaIds: string[] | null) => void;
 }) {
+  const [semanaVentaIds, setSemanaVentaIds] = useState<string[] | null>(null);
+
   const semanas = useMemo(() => {
     // Todas las operaciones de calendario se realizan con fechas UTC de medianoche.
-    // Así evitamos errores por cambios de hora, horario de verano y zona horaria local.
-    const fechaCalendario = (fecha: string | undefined): string | null => {
+    const fechaCalendario = (
+      fecha: string | undefined
+    ): string | null => {
       if (!fecha) return null;
 
-      // Una fecha YYYY-MM-DD es una fecha de calendario y no debe convertirse
-      // mediante new Date(), porque podría desplazarse al día anterior.
-      const soloFecha = /^(\d{4})-(\d{2})-(\d{2})$/.exec(fecha.slice(0, 10));
+      const soloFecha =
+        /^(\d{4})-(\d{2})-(\d{2})$/.exec(
+          fecha.slice(0, 10)
+        );
+
       if (soloFecha && fecha.length === 10) {
         const [, year, month, day] = soloFecha;
-        const comprobacion = new Date(Date.UTC(Number(year), Number(month) - 1, Number(day)));
+
+        const comprobacion = new Date(
+          Date.UTC(
+            Number(year),
+            Number(month) - 1,
+            Number(day)
+          )
+        );
+
         if (
           comprobacion.getUTCFullYear() !== Number(year) ||
           comprobacion.getUTCMonth() !== Number(month) - 1 ||
@@ -393,132 +557,263 @@ function ProduccionSemanal({
         ) {
           return null;
         }
+
         return `${year}-${month}-${day}`;
       }
 
       const instant = new Date(fecha);
-      if (Number.isNaN(instant.getTime())) return null;
 
-      const partes = new Intl.DateTimeFormat("en-CA", {
-        timeZone: "Europe/Madrid",
-        year: "numeric",
-        month: "2-digit",
-        day: "2-digit",
-      }).formatToParts(instant);
+      if (Number.isNaN(instant.getTime())) {
+        return null;
+      }
 
-      const year = partes.find((parte) => parte.type === "year")?.value;
-      const month = partes.find((parte) => parte.type === "month")?.value;
-      const day = partes.find((parte) => parte.type === "day")?.value;
+      const partes = new Intl.DateTimeFormat(
+        "en-CA",
+        {
+          timeZone: "Europe/Madrid",
+          year: "numeric",
+          month: "2-digit",
+          day: "2-digit",
+        }
+      ).formatToParts(instant);
 
-      if (!year || !month || !day) return null;
+      const year = partes.find(
+        (parte) => parte.type === "year"
+      )?.value;
+
+      const month = partes.find(
+        (parte) => parte.type === "month"
+      )?.value;
+
+      const day = partes.find(
+        (parte) => parte.type === "day"
+      )?.value;
+
+      if (!year || !month || !day) {
+        return null;
+      }
+
       return `${year}-${month}-${day}`;
     };
 
     const aUtc = (clave: string) => {
-      const [year, month, day] = clave.split("-").map(Number);
-      return new Date(Date.UTC(year, month - 1, day));
+      const [year, month, day] =
+        clave.split("-").map(Number);
+
+      return new Date(
+        Date.UTC(year, month - 1, day)
+      );
     };
 
     const clave = (fecha: Date) =>
       fecha.toISOString().slice(0, 10);
 
-    const primerDiaMes = new Date(Date.UTC(anio, mes - 1, 1));
-    const ultimoDiaMes = new Date(Date.UTC(anio, mes, 0));
+    const primerDiaMes = new Date(
+      Date.UTC(anio, mes - 1, 1)
+    );
 
-    // En UTC: lunes = 0 ... domingo = 6.
-    const lunesIndex = (primerDiaMes.getUTCDay() + 6) % 7;
-    const domingoIndex = (ultimoDiaMes.getUTCDay() + 6) % 7;
+    const ultimoDiaMes = new Date(
+      Date.UTC(anio, mes, 0)
+    );
 
-    const inicioCalendario = new Date(primerDiaMes);
-    inicioCalendario.setUTCDate(inicioCalendario.getUTCDate() - lunesIndex);
+    // Lunes = 0 ... domingo = 6
+    const lunesIndex =
+      (primerDiaMes.getUTCDay() + 6) % 7;
 
-    const finCalendario = new Date(ultimoDiaMes);
-    finCalendario.setUTCDate(finCalendario.getUTCDate() + (6 - domingoIndex));
+    const domingoIndex =
+      (ultimoDiaMes.getUTCDay() + 6) % 7;
+
+    const inicioCalendario =
+      new Date(primerDiaMes);
+
+    inicioCalendario.setUTCDate(
+      inicioCalendario.getUTCDate() - lunesIndex
+    );
+
+    const finCalendario =
+      new Date(ultimoDiaMes);
+
+    finCalendario.setUTCDate(
+      finCalendario.getUTCDate() +
+        (6 - domingoIndex)
+    );
 
     const resultado: {
       inicio: string;
       fin: string;
       total: number;
       ventas: number;
+      ventaIds: string[];
     }[] = [];
 
-    const cursor = new Date(inicioCalendario);
+    const cursor = new Date(
+      inicioCalendario
+    );
+
     while (cursor <= finCalendario) {
       const inicio = clave(cursor);
+
       const finDate = new Date(cursor);
-      finDate.setUTCDate(finDate.getUTCDate() + 6);
+
+      finDate.setUTCDate(
+        finDate.getUTCDate() + 6
+      );
 
       resultado.push({
         inicio,
         fin: clave(finDate),
         total: 0,
         ventas: 0,
+        ventaIds: [],
       });
 
-      cursor.setUTCDate(cursor.getUTCDate() + 7);
+      cursor.setUTCDate(
+        cursor.getUTCDate() + 7
+      );
     }
 
-    const inicioMesClave = clave(primerDiaMes);
-    const finMesClave = clave(ultimoDiaMes);
+    const inicioMesClave =
+      clave(primerDiaMes);
+
+    const finMesClave =
+      clave(ultimoDiaMes);
 
     ventas.forEach((venta) => {
       const fecha = fechaCalendario(venta.createdAt);
-      if (!fecha || fecha < inicioMesClave || fecha > finMesClave) return;
+
+      if (
+        !fecha ||
+        fecha < inicioMesClave ||
+        fecha > finMesClave
+      ) {
+        return;
+      }
 
       const fechaUtc = aUtc(fecha);
-      const semana = resultado.find((item) => {
-        const inicio = aUtc(item.inicio);
-        const fin = aUtc(item.fin);
-        return fechaUtc >= inicio && fechaUtc <= fin;
-      });
+
+      const semana = resultado.find(
+        (item) => {
+          const inicio = aUtc(item.inicio);
+          const fin = aUtc(item.fin);
+
+          return (
+            fechaUtc >= inicio &&
+            fechaUtc <= fin
+          );
+        }
+      );
 
       if (!semana) return;
 
-      semana.total += Number(venta.primaNeta) || 0;
+      // EXACTAMENTE las ventas que entran en el cálculo semanal
+      semana.total +=
+        Number(venta.primaNeta) || 0;
+
       semana.ventas += 1;
+
+      semana.ventaIds.push(venta._id);
     });
 
     return resultado;
   }, [ventas, mes, anio]);
 
-  const maximo = Math.max(...semanas.map((semana) => semana.total), 1);
+  const maximo = Math.max(
+    ...semanas.map(
+      (semana) => semana.total
+    ),
+    1
+  );
 
-  const formatoFecha = (claveFecha: string) =>
-    aFechaLocalSegura(claveFecha).toLocaleDateString("es-ES", {
-      day: "numeric",
-      month: "short",
-    });
+  const formatoFecha = (
+    claveFecha: string
+  ) =>
+    aFechaLocalSegura(
+      claveFecha
+    ).toLocaleDateString(
+      "es-ES",
+      {
+        day: "numeric",
+        month: "short",
+      }
+    );
 
   return (
-    <div className={expanded ? "space-y-8" : "space-y-5"}>
-      {semanas.map((semana, index) => {
-        const porcentaje = (semana.total / maximo) * 100;
+    <div
+      className={
+        expanded
+          ? "space-y-5"
+          : "space-y-2"
+      }
+    >
+      {semanas.map(
+        (semana, index) => {
+          const porcentaje =
+            (semana.total / maximo) *
+            100;
 
-        return (
-          <div key={`${semana.inicio}-${semana.fin}`}>
-            <div className="mb-2 flex flex-wrap items-center justify-between gap-3 text-xs">
-              <span className="whitespace-nowrap text-slate-600">
-                Semana {index + 1} ({formatoFecha(semana.inicio)} - {formatoFecha(semana.fin)})
-              </span>
+          return (
+            <div
+              key={`${semana.inicio}-${semana.fin}`}
+              className="grid grid-cols-[minmax(0,1fr)_auto_auto_28px] items-center gap-2 rounded-lg px-1.5 py-1.5"
+            >
+              <button
+                type="button"
+                disabled={semana.total <= 0 || semana.ventas <= 0}
+                onClick={() => {
+                  if (semana.total <= 0 || semana.ventas <= 0) return;
+                  setSemanaVentaIds(semana.ventaIds);
+                  onSemanaClick?.(semana.ventaIds);
+                }}
+                className={`group col-span-1 min-w-0 text-left ${
+                  semana.total <= 0 || semana.ventas <= 0
+                    ? "cursor-default"
+                    : "cursor-pointer"
+                }`}
+              >
+                <div className="mb-1 truncate text-[11px] text-slate-600 group-hover:text-blue-700">
+                  Semana {index + 1} (
+                  {formatoFecha(semana.inicio)} - {formatoFecha(semana.fin)})
+                </div>
+                <div className="h-2 overflow-hidden rounded-full bg-slate-100">
+                  <div
+                    className="h-full rounded-full bg-blue-600 transition-all group-hover:bg-blue-700"
+                    style={{ width: `${porcentaje}%` }}
+                  />
+                </div>
+              </button>
 
-              <span className="font-semibold text-slate-800">
+              <span className="whitespace-nowrap text-[11px] font-semibold text-slate-800">
                 {euros(semana.total)}
               </span>
 
-              <span className="whitespace-nowrap text-slate-500">
+              <span className="whitespace-nowrap text-[11px] text-slate-500">
                 {semana.ventas} ventas
               </span>
-            </div>
 
-            <div className="h-2.5 overflow-hidden rounded-full bg-slate-100">
-              <div
-                className="h-full rounded-full bg-blue-600 transition-all"
-                style={{ width: `${porcentaje}%` }}
-              />
+              <div className="flex h-6 w-6 items-center justify-center">
+                {semana.total > 0 &&
+                  semana.ventas > 0 &&
+                  semanaVentaIds !== null &&
+                  semana.ventaIds.some((id) => semanaVentaIds.includes(id)) && (
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setSemanaVentaIds(null);
+                        onSemanaClick?.(null);
+                      }}
+                      className="flex h-6 w-6 items-center justify-center rounded-full bg-red-50 text-red-500 transition hover:bg-red-100 hover:text-red-700"
+                      title="Quitar filtro de esta semana"
+                      aria-label="Quitar filtro de esta semana"
+                    >
+                      <X size={13} strokeWidth={2.5} />
+                    </button>
+                  )}
+              </div>
             </div>
-          </div>
-        );
-      })}
+          );
+        }
+      )}
     </div>
   );
 }
@@ -722,11 +1017,13 @@ function ActividadComercialMaximizada({
 
 function VentasDiarias({
   ventas,
+  modoFecha,
   mes,
   anio,
   expanded = false,
 }: {
   ventas: Venta[];
+  modoFecha: "efecto" | "venta";
   mes: number;
   anio: number;
   expanded?: boolean;
@@ -740,9 +1037,14 @@ function VentasDiarias({
     }));
 
     ventas.forEach((venta) => {
-      if (!venta.createdAt) return;
+  const valorFecha =
+    modoFecha === "venta"
+      ? venta.createdAt
+      : venta.fechaEfecto;
 
-      const fecha = new Date(venta.createdAt);
+  if (!valorFecha) return;
+
+  const fecha = new Date(valorFecha);
       if (Number.isNaN(fecha.getTime())) return;
 
       const partes = new Intl.DateTimeFormat("en-CA", {
@@ -769,7 +1071,7 @@ function VentasDiarias({
     });
 
     return resultado;
-  }, [ventas, mes, anio]);
+  }, [ventas, modoFecha, mes, anio]);
 
   if (expanded) {
     return <ActividadComercialMaximizada datos={datos} />;
@@ -789,66 +1091,101 @@ function VentasDiarias({
     .join(" ");
 
   return (
-    <>
-      <div className="mb-3 flex justify-center gap-5 text-xs">
-        <div className="flex items-center gap-2">
-          <span className="h-2.5 w-5 rounded-sm bg-blue-300" />
-          Nº de pólizas creadas
-        </div>
-        <div className="flex items-center gap-2">
-          <span className="h-1 w-5 rounded-full bg-blue-800" />
-          Producción (€)
-        </div>
+  <div className="w-full">
+    {/* Leyenda */}
+    <div className="mb-4 flex items-center justify-center gap-7 text-[11px] font-medium text-slate-500">
+      <div className="flex items-center gap-2">
+        <span className="h-2.5 w-5 rounded-sm bg-blue-300" />
+        <span>Nº de pólizas</span>
       </div>
-      <div className="relative h-[220px] w-full">
-        <div className="absolute inset-0 flex items-end justify-between gap-1 px-2">
-          {datos.map((item) => (
+
+      <div className="flex items-center gap-2">
+        <span className="h-[3px] w-6 rounded-full bg-blue-800" />
+        <span>Producción (€)</span>
+      </div>
+    </div>
+
+    {/* Gráfico */}
+    <div className="relative h-[190px] w-full">
+      {/* Rejilla */}
+      <div className="pointer-events-none absolute inset-x-0 top-3 bottom-7 flex flex-col justify-between">
+        <div className="border-t border-slate-100" />
+        <div className="border-t border-slate-100" />
+        <div className="border-t border-slate-100" />
+        <div className="border-t border-slate-200" />
+      </div>
+
+      {/* Barras */}
+      <div className="absolute inset-x-0 top-3 bottom-7 flex items-end gap-[3px]">
+        {datos.map((item) => (
+          <div
+            key={item.dia}
+            className="flex h-full flex-1 items-end"
+          >
             <div
-              key={item.dia}
-              className="flex h-full flex-1 items-end"
-            >
-              <div
-                className="w-full rounded-t-sm bg-blue-300"
-                style={{
-                  height: `${(item.ventas / maxVentas) * 100}%`,
-                  minHeight: item.ventas > 0 ? "3px" : "0",
-                }}
-                title={`${item.dia}: ${item.ventas} pólizas creadas · ${euros(item.total)}`}
-              />
-            </div>
-          ))}
-        </div>
-        <svg
-          viewBox="0 0 300 205"
-          preserveAspectRatio="none"
-          className="pointer-events-none absolute inset-0 h-full w-full"
-        >
-          <polyline
-            points={puntos}
-            fill="none"
-            stroke="#172b91"
-            strokeWidth="2.5"
-            strokeLinejoin="round"
-            strokeLinecap="round"
-          />
-        </svg>
+              className="w-full rounded-t-[3px] bg-blue-300/70 transition-all"
+              style={{
+                height: `${(item.ventas / maxVentas) * 100}%`,
+                minHeight: item.ventas > 0 ? "3px" : "0",
+              }}
+              title={`${item.dia}: ${item.ventas} pólizas · ${euros(item.total)}`}
+            />
+          </div>
+        ))}
       </div>
-      <div className="mt-2 flex justify-between px-1 text-[10px] text-slate-400">
+
+      {/* Línea de producción */}
+      <svg
+        viewBox="0 0 300 160"
+        preserveAspectRatio="none"
+        className="pointer-events-none absolute inset-x-0 top-3 h-[160px] w-full"
+      >
+        <polyline
+          points={datos
+            .map((item) => {
+              const x =
+                datos.length === 1
+                  ? 150
+                  : ((item.dia - 1) / (datos.length - 1)) * 300;
+
+              const y =
+                150 - (item.total / maxProduccion) * 130;
+
+              return `${x},${y}`;
+            })
+            .join(" ")}
+          fill="none"
+          stroke="#1e40af"
+          strokeWidth="2.5"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        />
+      </svg>
+
+      {/* Eje inferior */}
+      <div className="absolute inset-x-0 bottom-0 flex justify-between text-[10px] font-medium text-slate-400">
         <span>1</span>
-        <span>{Math.ceil(datos.length / 3)}</span>
-        <span>{Math.ceil(datos.length / 2)}</span>
+        <span>5</span>
+        <span>10</span>
+        <span>15</span>
+        <span>20</span>
+        <span>25</span>
         <span>{datos.length}</span>
       </div>
-    </>
-  );
+    </div>
+  </div>
+);
 }
 
 export default function DashboardKpis({
   ventas,
+  ventasProduccionSemanal,
   kpis,
   isAdmin,
+  modoFecha,
   mes,
   anio,
+  onSemanaClick,
 }: Props) {
   const produccionPorRamo = useMemo(() => {
     const resultado: Record<string, number> = {};
@@ -861,77 +1198,153 @@ export default function DashboardKpis({
     return Object.entries(resultado).sort((a, b) => b[1] - a[1]);
   }, [ventas]);
 
+  const polizasPorRamo = useMemo(() => {
+    const resultado: Record<string, { polizas: number; prima: number }> = {};
+
+    ventas.forEach((venta) => {
+      const ramo = venta.ramo || "Sin ramo";
+
+      if (!resultado[ramo]) {
+        resultado[ramo] = { polizas: 0, prima: 0 };
+      }
+
+      resultado[ramo].polizas += 1;
+      resultado[ramo].prima += Number(venta.primaNeta) || 0;
+    });
+
+    return Object.entries(resultado).sort(
+      (a, b) => b[1].polizas - a[1].polizas
+    );
+  }, [ventas]);
+
+  const datosRamoDonut = polizasPorRamo.map(
+    ([ramo, datos]) => [ramo, datos.polizas, datos.prima] as [string, number, number]
+  );
+
   const produccionTotal = ventas.reduce(
     (total, venta) => total + (Number(venta.primaNeta) || 0),
     0
   );
 
+  // Producción comercial (Registro):
+  // suma SIEMPRE las ventas registradas (createdAt) del periodo seleccionado,
+  // independientemente de la fecha de efecto. LibroVentas ya pasa aquí
+  // únicamente las ventas registradas que respetan aseguradora/usuario/ramo.
+  const produccionRegistro = (ventasProduccionSemanal ?? []).reduce(
+    (total, venta) => total + (Number(venta.primaNeta) || 0),
+    0
+  );
+
+  const primaMedia = ventas.length > 0
+    ? produccionTotal / ventas.length
+    : 0;
+
   return (
     <div className="space-y-4">
 <div
-  className={
-    isAdmin
-      ? "grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-[1fr_1fr_1fr_1.35fr]"
-      : "grid w-full grid-cols-1 gap-4 sm:grid-cols-2"
-  }
->        <KPIBox
-          title="Producción total"
-          value={euros(Number(kpis?.produccion?.actual) || produccionTotal)}
-          variation={kpis?.produccion?.variacionPct}
+        className={
+          isAdmin
+            ? "grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-[1fr_1fr_1fr_1.35fr]"
+            : "grid w-full grid-cols-1 gap-4 md:grid-cols-3"
+        }
+      >
+        <KPIBox
+          title={isAdmin ? "Producción total" : "Producción"}
+          value={euros(produccionTotal)}
+          variation={isAdmin ? kpis?.produccion?.variacionPct : undefined}
           isAdmin={isAdmin}
           icon={<Coins size={27} />}
           iconBackground="bg-emerald-100"
           iconColor="text-emerald-600"
         />
-{isAdmin && (
-     <>
-        <KPIBox
-          title="Producción comercial"
-          subtitle="(Registro)"
-          value={euros(Number(kpis?.produccionCreated?.actual) || 0)}
-          variation={kpis?.produccionCreated?.variacionPct}
-          isAdmin={isAdmin}
-          icon={<BarChart3 size={27} />}
-          iconBackground="bg-blue-100"
-          iconColor="text-blue-600"
-        />
 
-        <KPIBox
-          title="Nº de ventas"
-          value={String(kpis?.polizas?.actual ?? ventas.length)}
-          variation={kpis?.polizas?.variacionPct}
-          isAdmin={isAdmin}
-          icon={<CalendarDays size={27} />}
-          iconBackground="bg-purple-100"
-          iconColor="text-purple-600"
-        />
-</>
+        {isAdmin ? (
+          <>
+            <KPIBox
+              title="Producción comercial"
+              subtitle="(Registro)"
+              value={euros(produccionRegistro)}
+              variation={kpis?.produccionCreated?.variacionPct}
+              isAdmin
+              icon={<BarChart3 size={27} />}
+              iconBackground="bg-blue-100"
+              iconColor="text-blue-600"
+            />
+
+            <KPIBox
+              title="Nº de ventas"
+              value={String(ventas.length)}
+              variation={kpis?.polizas?.variacionPct}
+              isAdmin
+              icon={<CalendarDays size={27} />}
+              iconBackground="bg-purple-100"
+              iconColor="text-purple-600"
+            />
+          </>
+        ) : (
+          <>
+            <KPIBox
+              title="Nº de ventas"
+              value={String(ventas.length)}
+              isAdmin={false}
+              icon={<CalendarDays size={27} />}
+              iconBackground="bg-purple-100"
+              iconColor="text-purple-600"
+            />
+
+            <KPIBox
+              title="Prima media"
+              value={euros(primaMedia)}
+              isAdmin={false}
+              icon={<BarChart3 size={27} />}
+              iconBackground="bg-blue-100"
+              iconColor="text-blue-600"
+            />
+          </>
         )}
 
-        <div className={`${CARD} min-w-0 p-4`}>
-          <h3 className="mb-3 text-sm font-semibold text-slate-900">Producción por ramo</h3>
-          <div className="grid grid-cols-2 gap-2 xl:grid-cols-3">
-            {produccionPorRamo.map(([ramo, total]) => (
-              <div key={ramo} className="min-w-0 rounded-lg border border-slate-200 px-3 py-2">
-                <p className="truncate text-xs text-slate-500" title={ramo}>{ramo}</p>
-                <p className="mt-1 text-sm font-semibold text-slate-800">{euros(total)}</p>
-              </div>
-            ))}
+        {isAdmin && (
+          <div className={`${CARD} min-w-0 p-4`}>
+            <h3 className="mb-3 text-sm font-semibold text-slate-900">
+              Producción por ramo
+            </h3>
+            <div className="grid grid-cols-2 gap-2 xl:grid-cols-3">
+              {produccionPorRamo.map(([ramo, total]) => (
+                <div
+                  key={ramo}
+                  className="min-w-0 rounded-lg border border-slate-200 px-3 py-2"
+                >
+                  <p className="truncate text-xs text-slate-500" title={ramo}>
+                    {ramo}
+                  </p>
+                  <p className="mt-1 text-sm font-semibold text-slate-800">
+                    {euros(total)}
+                  </p>
+                </div>
+              ))}
+            </div>
           </div>
-        </div>
+        )}
       </div>
 
-{isAdmin && (
-     <>
       <div className="grid grid-cols-1 items-stretch gap-4 xl:grid-cols-3">
-        <MaximizablePanel
-          title="Producción por semanas"
-         
-        >
+        <MaximizablePanel title="Producción por semanas">
           {(expanded) => (
             <ProduccionSemanal
+              ventas={ventasProduccionSemanal ?? ventas}
+              mes={mes}
+              anio={anio}
+              expanded={expanded}
+              onSemanaClick={onSemanaClick}
+            />
+          )}
+        </MaximizablePanel>
+
+        <MaximizablePanel title="Actividad comercial diaria">
+          {(expanded) => (
+            <VentasDiarias
               ventas={ventas}
-             
+              modoFecha={modoFecha}
               mes={mes}
               anio={anio}
               expanded={expanded}
@@ -939,17 +1352,16 @@ export default function DashboardKpis({
           )}
         </MaximizablePanel>
 
-        <MaximizablePanel title="Actividad comercial diaria" subtitle="pólizas creadas">
-          {(expanded) => <VentasDiarias ventas={ventas} mes={mes} anio={anio} expanded={expanded} />}
-        </MaximizablePanel>
-
         <MaximizablePanel title="Producción por ramo">
-          {(expanded) => <RamoDonut datos={produccionPorRamo} total={produccionTotal} expanded={expanded} />}
+          {(expanded) => (
+            <RamoDonut
+              datos={datosRamoDonut}
+              totalPolizas={ventas.length}
+              totalPrima={produccionTotal}
+              expanded={expanded}
+            />
+          )}
         </MaximizablePanel>
-      </div>
-
-      </>
-        )}
-    </div>
+      </div>    </div>
   );
 }

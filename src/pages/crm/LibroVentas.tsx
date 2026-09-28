@@ -1,7 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import type { Dispatch, SetStateAction } from "react";
 
-import VentasTable from "../../components/crm/VentasTable";
 import InfoModal from "../../components/common/InfoModal";
 import EditVentaModal from "../../components/ventas/EditVentaModal";
 import ConfirmModal from "../../components/common/ConfirmModal";
@@ -12,7 +11,7 @@ import VentasSearchSkeleton from "../../components/crm/skeletons/VentasSearchSke
 import { registerVentasSocketHandlers } from "../../services/ventasSocketHandlers";
 import api from "../../services/api";
 import { useNavigate, useOutletContext } from "react-router-dom";
-import { ChevronLeft, ChevronRight } from "lucide-react";
+import { ChevronLeft, ChevronRight, Pencil, Ban, RotateCcw, Trash2, Eye, EyeOff, CalendarDays, ShoppingCart, Search, X } from "lucide-react";
 import * as XLSX from "xlsx";
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
@@ -99,9 +98,11 @@ try {
 
 // Solo el administrador puede cambiar el modo.
 // Los empleados mantienen el comportamiento actual.
-const [modoFecha] = useState<
+const [modoFecha, setModoFecha] = useState<
   "efecto" | "venta"
 >("efecto");
+
+const [soloFuturas, setSoloFuturas] = useState(false);
 
 // BUSCADOR
   const [search, setSearch] = useState("");
@@ -112,6 +113,30 @@ const [, setLoadingBusqueda] = useState(false);
 
 
 const [diaHasta, setDiaHasta] = useState<number | null>(null);
+
+const [showPoliza, setShowPoliza] = useState(true);
+const [showTomador, setShowTomador] = useState(true);
+const columnPrefsKey = `crm-libro-columnas-${currentUser?._id || currentUser?.id || currentUser?.email || currentUser?.role || "usuario"}`;
+
+useEffect(() => {
+  try {
+    const saved = localStorage.getItem(columnPrefsKey);
+    if (!saved) return;
+    const parsed = JSON.parse(saved);
+    if (typeof parsed.showPoliza === "boolean") setShowPoliza(parsed.showPoliza);
+    if (typeof parsed.showTomador === "boolean") setShowTomador(parsed.showTomador);
+  } catch {
+    // Preferencias locales corruptas: se ignoran.
+  }
+}, [columnPrefsKey]);
+
+useEffect(() => {
+  try {
+    localStorage.setItem(columnPrefsKey, JSON.stringify({ showPoliza, showTomador }));
+  } catch {
+    // localStorage no disponible.
+  }
+}, [columnPrefsKey, showPoliza, showTomador]);
 
 
 
@@ -170,6 +195,7 @@ useEffect(() => {
 
 
   const [ventas, setVentas] = useState<VentaAPI[]>([]);
+  const [ventasProduccionSemanal, setVentasProduccionSemanal] = useState<VentaAPI[]>([]);
  
 
   const [loading, setLoading] = useState(false);
@@ -184,6 +210,7 @@ const [ventaAAnular, setVentaAAnular] = useState<VentaAPI | null>(null);
   const [usuario, setUsuario] = useState("ALL");
   const [ramo, setRamo] = useState("ALL");
   const [kpis, setKpis] = useState<any>(null);
+  const [semanaVentaIds, setSemanaVentaIds] = useState<string[] | null>(null);
 const [loadingKpis, setLoadingKpis] = useState(false);
 
 const fetchKPIs = async () => {
@@ -258,6 +285,8 @@ const cargarSolicitudes = async () => {
         ? res.data.ventas
         : []
     );
+
+   
   } catch (e) {
     console.error(
       "Error cargando libro de ventas",
@@ -268,10 +297,37 @@ const cargarSolicitudes = async () => {
   }
 };
 
+// Cargar ventas registradas del mes exclusivamente para Producción por semanas
+// y Producción comercial (Registro). No depende de modoFecha.
+const fetchVentasProduccionSemanal = async () => {
+  try {
+    const res = await api.get("/ventas/libro", {
+      params: {
+        month: mes,
+        year: anio,
+        diaHasta,
+        modoFecha: "venta",
+      },
+    });
+
+    setVentasProduccionSemanal(
+      Array.isArray(res.data.ventas) ? res.data.ventas : []
+    );
+  } catch (e) {
+    console.error("Error cargando ventas registradas para producción semanal", e);
+    setVentasProduccionSemanal([]);
+  }
+};
+
 // 1️⃣ Cargar ventas al cambiar periodo
 useEffect(() => {
   fetchLibroVentas();
+  fetchVentasProduccionSemanal();
 }, [mes, anio, diaHasta, modoFecha]);
+
+useEffect(() => {
+  setSemanaVentaIds(null);
+}, [mes, anio, modoFecha]);
 
 useEffect(() => {
   fetchKPIs();
@@ -283,6 +339,7 @@ useEffect(() => {
   usuario,
   diaHasta,
   modoFecha,
+  ventas,
 ]);
 
 
@@ -429,14 +486,70 @@ const ventasBase = useMemo(() => {
      FILTROS
   ========================= */
 const ventasFiltradas = useMemo(() => {
-  return ventasBase.filter((v) => {
+  // Si se selecciona una semana, la tabla debe mostrar EXACTAMENTE
+  // las ventas registradas (createdAt) que forman esa semana.
+  const fuente = semanaVentaIds !== null
+    ? ventasProduccionSemanal
+    : ventasBase;
+
+  return fuente.filter((v) => {
+    if (aseguradora !== "ALL" && v.aseguradora !== aseguradora) return false;
+    if (usuario !== "ALL" && v.createdBy?._id !== usuario) return false;
+    if (ramo !== "ALL" && v.ramo !== ramo) return false;
+
+    if (
+      semanaVentaIds !== null &&
+      !semanaVentaIds.includes(v._id)
+    ) {
+      return false;
+    }
+
+    // El filtro de efectos futuros no debe recortar una semana seleccionada.
+    if (
+      semanaVentaIds === null &&
+      soloFuturas &&
+      modoFecha === "venta"
+    ) {
+      if (!v.fechaEfecto) return false;
+
+      const fechaEfecto = new Date(v.fechaEfecto);
+      const inicioPeriodo = new Date(anio, mes - 1, 1);
+
+      if (fechaEfecto <= inicioPeriodo) return false;
+
+      const mesEfecto =
+        fechaEfecto.getFullYear() * 12 + fechaEfecto.getMonth();
+
+      const mesSeleccionado =
+        anio * 12 + (mes - 1);
+
+      if (mesEfecto <= mesSeleccionado) return false;
+    }
+
+    return true;
+  });
+}, [
+  ventasBase,
+  ventasProduccionSemanal,
+  aseguradora,
+  usuario,
+  ramo,
+  semanaVentaIds,
+  soloFuturas,
+  modoFecha,
+  mes,
+  anio,
+]);
+
+// Producción por semanas usa siempre createdAt y respeta solo los filtros comerciales.
+const ventasProduccionSemanalFiltradas = useMemo(() => {
+  return ventasProduccionSemanal.filter((v) => {
     if (aseguradora !== "ALL" && v.aseguradora !== aseguradora) return false;
     if (usuario !== "ALL" && v.createdBy?._id !== usuario) return false;
     if (ramo !== "ALL" && v.ramo !== ramo) return false;
     return true;
   });
-}, [ventasBase, aseguradora, usuario, ramo]);
-
+}, [ventasProduccionSemanal, aseguradora, usuario, ramo]);
 
 
 
@@ -455,95 +568,6 @@ const produccionPorRamo = useMemo(() => {
     return acc;
   }, {});
 }, [ventasFiltradas]);
-
-const ventasPorDia = useMemo(() => {
-  const resultado: Record<
-    string,
-    { ventas: number; total: number }
-  > = {};
-
-  ventasFiltradas.forEach((v) => {
-    const fecha =
-      modoFecha === "venta"
-        ? v.createdAt
-        : v.fechaEfecto;
-
-    if (!fecha) return;
-
-    const dia = new Date(fecha).getDate();
-    const clave = String(dia);
-
-    if (!resultado[clave]) {
-      resultado[clave] = {
-        ventas: 0,
-        total: 0,
-      };
-    }
-
-    resultado[clave].ventas += 1;
-    resultado[clave].total += v.primaNeta;
-  });
-
-  return Object.entries(resultado)
-    .map(([dia, datos]) => ({
-      dia: Number(dia),
-      ...datos,
-    }))
-    .sort((a, b) => a.dia - b.dia);
-}, [ventasFiltradas, modoFecha]);
-
-
-
-{/* VENTAS DIARIAS */}
-<div className={`${CARD} p-5 shadow-sm`}>
-  <h3 className="mb-4 text-sm font-semibold text-slate-900">
-    Actividad comercial diaria
-    <span className="text-slate-500">
-      {" "}({modoFecha === "venta"
-        ? "pólizas registradas"
-        : "fecha de efecto"})
-    </span>
-  </h3>
-
-  <div className="space-y-3">
-    {ventasPorDia.map((dia) => (
-      <div key={dia.dia}>
-        <div className="mb-1 flex items-center justify-between">
-          <span className="text-xs text-slate-600">
-            Día {dia.dia}
-          </span>
-
-          <span className="text-xs font-semibold text-slate-800">
-            {dia.total.toLocaleString("es-ES", {
-              minimumFractionDigits: 2,
-              maximumFractionDigits: 2,
-            })} €
-          </span>
-
-          <span className="text-xs text-slate-500">
-            {dia.ventas} ventas
-          </span>
-        </div>
-
-        <div className="h-2 overflow-hidden rounded-full bg-slate-100">
-          <div
-            className="h-full rounded-full bg-blue-600"
-            style={{
-              width: `${
-                (dia.total /
-                  Math.max(
-                    ...ventasPorDia.map((d) => d.total),
-                    1
-                  )) *
-                100
-              }%`,
-            }}
-          />
-        </div>
-      </div>
-    ))}
-  </div>
-</div>
 
   const aseguradoras = Array.from(new Set(ventas.map(v => v.aseguradora)));
   const usuarios = Array.from(
@@ -597,8 +621,8 @@ const ventasPorDia = useMemo(() => {
 
     const wsVentas = XLSX.utils.json_to_sheet(ventasData);
     wsVentas["!cols"] = [
-      { wch: 12 }, { wch: 18 }, { wch: 25 },
-      { wch: 15 }, { wch: 12 }, { wch: 12 }, { wch: 22 },
+      { wch: 12 }, { wch: 12 }, { wch: 18 }, { wch: 28 },
+      { wch: 18 }, { wch: 20 }, { wch: 12 }, { wch: 22 },
     ];
 
     const wb = XLSX.utils.book_new();
@@ -629,11 +653,10 @@ const ventasPorDia = useMemo(() => {
 
     autoTable(doc, {
       startY: y + 20,
-      head: [["Fecha", "Póliza", "Tomador", "Aseguradora", "Ramo", "Prima", "Usuario"]],
+      head: [["Venta", "Efecto", "Póliza", "Tomador", "Aseguradora", "Ramo", "Prima", "Usuario"]],
       body: ventasFiltradas.map(v => [
-        v.fechaEfecto
-          ? new Date(v.fechaEfecto).toLocaleDateString("es-ES")
-          : "-",
+        v.createdAt ? new Date(v.createdAt).toLocaleDateString("es-ES") : "-",
+        v.fechaEfecto ? new Date(v.fechaEfecto).toLocaleDateString("es-ES") : "-",
         v.numeroPoliza,
         v.tomador,
         v.aseguradora,
@@ -662,7 +685,8 @@ const ventasPorDia = useMemo(() => {
 
     {/* TÍTULO - IZQUIERDA */}
     <div className="text-center md:text-left">
-      <h1 className="text-2xl font-semibold text-slate-900">
+      <div className="mb-2 inline-flex items-center rounded-full bg-blue-50 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wide text-blue-700">Control comercial</div>
+      <h1 className="text-2xl font-semibold tracking-tight text-slate-900">
         CRM · Libro de ventas
       </h1>
 
@@ -671,8 +695,8 @@ const ventasPorDia = useMemo(() => {
       </p>
     </div>
 
-   {/* SELECTOR DE PERIODO - CENTRO */}
-<div className="flex justify-center">
+    {/* SELECTOR DE PERIODO */}
+<div className="flex justify-center md:justify-end">
   <PeriodoSelector
     mes={mes}
     anio={anio}
@@ -683,32 +707,37 @@ const ventasPorDia = useMemo(() => {
   />
 </div>
 
-    {/* ESPACIO DERECHO PARA MANTENER EL CENTRADO */}
-    <div className="hidden md:block" />
-
   </div>
 
   {/* DASHBOARD KPIs */}
-{loadingKpis ? (
-  <div className="rounded-xl border border-slate-200 bg-white p-6 text-sm text-slate-500">
-    Cargando indicadores...
-  </div>
-) : (
-  <DashboardKpis
-    ventas={ventasFiltradas}
-    kpis={kpis}
-    isAdmin={isAdmin}
-    modoFecha={isAdmin ? modoFecha : "efecto"}
-    mes={mes}
-    anio={anio}
-  />
-)}
+{/* DASHBOARD KPIs */}
+<DashboardKpis
+  ventas={ventasFiltradas}
+  ventasProduccionSemanal={ventasProduccionSemanalFiltradas}
+  kpis={kpis}
+  isAdmin={isAdmin}
+  modoFecha={isAdmin ? modoFecha : "efecto"}
+  mes={mes}
+  anio={anio}
+  onSemanaClick={setSemanaVentaIds}
+/>
 
 {/* 🔍 BUSCADOR + FILTROS (ADMIN) */}
 {loading ? (
   <VentasSearchSkeleton />
 ) : (
   <div className={`${CARD} space-y-4 p-4 shadow-sm sm:p-6`}>
+    <div className="flex items-center justify-between gap-3">
+      <div>
+        <h2 className="text-sm font-semibold text-slate-900">Buscar y filtrar</h2>
+        <p className="mt-0.5 text-xs text-slate-500">Localiza rápidamente cualquier operación del CRM.</p>
+      </div>
+      {(search || aseguradora !== "ALL" || ramo !== "ALL" || usuario !== "ALL" || diaHasta !== null) && (
+        <button type="button" onClick={() => { setSearch(""); setAseguradora("ALL"); setRamo("ALL"); setUsuario("ALL"); setDiaHasta(null); }} className="inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-medium text-slate-500 transition hover:bg-slate-100 hover:text-slate-800">
+          Limpiar filtros
+        </button>
+      )}
+    </div>
 
     {/* 🔍 BÚSQUEDA GLOBAL (TODOS) */}
     <VentasGlobalSearch
@@ -722,28 +751,20 @@ const ventasPorDia = useMemo(() => {
       </p>
     )}
 
-    {/* 🎛 FILTROS (SOLO ADMIN) */}
+{/* 🎛 FILTROS + CRITERIO DE FECHA (SOLO ADMIN) */}
     {isAdmin && (
   <div
-    className={`flex gap-6 flex-wrap items-end transition-opacity duration-200 ${
+    className={`flex flex-wrap items-end gap-3 lg:gap-4 transition-opacity duration-200 ${
       searchActive ? "opacity-50 pointer-events-none" : ""
     }`}
   >
-    <FiltroMes
-      mes={mes}
-      anio={anio}
-      setMes={setMes}
-      setAnio={setAnio}
-      minPeriodo={minPeriodo}
-      maxPeriodo={maxPeriodo}
-    />
+    {/* MES */}
+    <FiltroMes mes={mes} setMes={setMes} />
 
-    <FiltroAnio
-      anio={anio}
-      setAnio={setAnio}
-    />
+    {/* AÑO */}
+    <FiltroAnio anio={anio} setAnio={setAnio} />
 
-    {/* 🔥 NUEVO FILTRO HASTA DÍA */}
+    {/* FILTRO HASTA DÍA */}
     <div>
   <label className="block text-xs font-semibold mb-1">
     A día:
@@ -770,7 +791,7 @@ const ventasPorDia = useMemo(() => {
       const selectedDate = new Date(e.target.value);
       setDiaHasta(selectedDate.getDate());
     }}
-    className="border rounded px-3 py-2 text-sm cursor-pointer"
+    className="h-10 rounded-xl border border-slate-200 bg-white px-3 text-sm text-slate-700 shadow-sm outline-none transition focus:border-blue-400 focus:ring-4 focus:ring-blue-50 cursor-pointer"
   />
 </div>
 
@@ -794,7 +815,7 @@ const ventasPorDia = useMemo(() => {
       <select
         value={usuario}
         onChange={(e) => setUsuario(e.target.value)}
-        className="border rounded px-3 py-2 text-sm cursor-pointer"
+        className="h-10 rounded-xl border border-slate-200 bg-white px-3 text-sm text-slate-700 shadow-sm outline-none transition focus:border-blue-400 focus:ring-4 focus:ring-blue-50 cursor-pointer"
       >
         <option value="ALL">Todos</option>
         {usuarios.map((u: any) => (
@@ -804,6 +825,52 @@ const ventasPorDia = useMemo(() => {
         ))}
       </select>
     </div>
+
+    {/* 🔘 CRITERIO DEL PERIODO — alineado a la derecha de los filtros */}
+    {!searchActive && (
+      <div className="ml-auto flex h-10 items-center rounded-xl border border-slate-200 bg-white p-1 shadow-sm">
+        <span className="hidden px-2 text-[10px] font-bold uppercase tracking-[0.08em] text-slate-400 xl:inline">Periodo</span>
+        <button
+          type="button"
+          onClick={() => setModoFecha("venta")}
+          title="Usar la fecha real de registro de la venta"
+          className={`rounded-lg px-3 py-1.5 text-xs font-semibold transition-all duration-200 ${
+            modoFecha === "venta"
+              ? "bg-blue-600 text-white shadow-sm"
+              : "text-slate-500 hover:bg-white hover:text-slate-800"
+          }`}
+        >
+          Ventas registradas
+        </button>
+        <button
+          type="button"
+          onClick={() => setModoFecha("efecto")}
+          title="Usar la fecha de efecto de la póliza"
+          className={`rounded-lg px-3 py-1.5 text-xs font-semibold transition-all duration-200 ${
+            modoFecha === "efecto"
+              ? "bg-blue-600 text-white shadow-sm"
+              : "text-slate-500 hover:bg-white hover:text-slate-800"
+          }`}
+        >
+          Fecha de efecto
+        </button>
+
+        {modoFecha === "venta" && (
+  <button
+    type="button"
+    onClick={() => setSoloFuturas(v => !v)}
+    className={`ml-1 rounded-lg px-3 py-1.5 text-xs font-semibold transition-all duration-200 ${
+      soloFuturas
+        ? "bg-amber-500 text-white shadow-sm"
+        : "text-slate-500 hover:bg-slate-100 hover:text-slate-800"
+    }`}
+    title="Mostrar solo ventas cuyo efecto es posterior al periodo seleccionado"
+  >
+    Solo efectos futuros
+  </button>
+)}
+      </div>
+    )}
 
   </div>
 )}
@@ -820,136 +887,215 @@ const ventasPorDia = useMemo(() => {
 
      {/* TABLA */}
 {loading ? (
-  <div className="w-full overflow-x-auto">
-    <div className="min-w-[1100px]">
-      <VentasTableSkeleton rows={6} />
-    </div>
+  <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+    <VentasTableSkeleton rows={7} />
   </div>
 ) : (
-  <div className="w-full overflow-x-auto">
-    <div className="min-w-[1100px] transition-opacity duration-200 ease-out">
-      <VentasTable
-       ventas={ventasFiltradas.map(v => ({
-  _id: v._id,
-  fecha: v.fechaEfecto
-    ? new Date(v.fechaEfecto).toLocaleDateString("es-ES")
-    : "-",
+  <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+    <div className="flex flex-col gap-4 border-b border-slate-200 px-5 py-4 lg:flex-row lg:items-center lg:justify-between">
+      <div>
+        <div className="flex items-center gap-3">
+          <h2 className="text-base font-semibold text-slate-900">Ventas registradas</h2>
+          <span className="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-semibold text-slate-600">
+            {ventasFiltradas.length}
+          </span>
+        </div>
+        <p className="mt-1 text-xs text-slate-500">
+          {modoFecha === "venta"
+            ? "Ventas creadas durante el periodo seleccionado"
+            : "Ventas agrupadas por fecha de efecto"}
+        </p>
+      </div>
 
-  fechaVenta: v.createdAt
-    ? new Date(v.createdAt).toLocaleDateString("es-ES")
-    : "-",
-  poliza: v.numeroPoliza,
-  tomador: v.tomador,
-  aseguradora: v.aseguradora,
-  ramo: v.ramo,
-  prima: v.primaNeta,
-  usuario: v.createdBy?.nombre || "-",
-
-  estadoRevision: (v as any).estadoRevision ?? null,
-  estado: (v as any).estado,
-  anulada: (v as any).estado === "ANULADA",
-}))}
-
-isAdmin={isAdmin}
-
-onAnular={(row) => {
-  const original = ventas.find(v => v._id === row._id);
-  if (original) setVentaAAnular(original);
-}}
-
-onRehabilitar={(row) => {
-  const original = ventas.find(v => v._id === row._id);
-  if (!original) return;
-
-  setVentaARehabilitar(original);
-
-  setSolicitudSeleccionada({
-  _id: original._id,          // se mantiene
-  tipo: "REHABILITAR_VENTA",
-  estado: "PENDIENTE",
-  venta: { _id: original._id },
-  local: true,                // 🔑 CLAVE
-});
-
-
-}}
-
-onDelete={(row) => {
-  const original = ventas.find(v => v._id === row._id);
-  if (original) setVentaAEliminar(original);
-}}
-
-onClearRevision={async (row) => {
-  await api.patch(`/ventas/${row._id}/marcar-revision-leida`);
-  setVentas(prev =>
-    prev.map(v =>
-      v._id === row._id
-        ? { ...v, estadoRevision: null }
-        : v
-    )
-  );
-  setRevisionCount(prev => Math.max(prev - 1, 0));
-}}
-
-onEdit={async (row) => {
-  const originalVenta = ventas.find(v => v._id === row._id);
-  if (!originalVenta) return;
-
-  // ✅ COPIA PROFUNDA — el original NO se toca
-  const original = JSON.parse(JSON.stringify(originalVenta));
-
-  let ventaInicial: any = JSON.parse(JSON.stringify(original));
-  let changedFields: string[] = [];
-  let solicitudId: string | undefined;
-
-  // 🟡 SI HAY REVISIÓN PENDIENTE → cargar solicitud
-  if (original.estadoRevision === "pendiente") {
-    try {
-      const res = await api.get(
-        `/ventas/${original._id}/solicitud-pendiente`
-      );
-
-      const solicitud = res.data;
-
-      if (solicitud?.payload && typeof solicitud.payload === "object") {
-        ventaInicial = {
-          ...ventaInicial,
-          ...solicitud.payload,
-        };
-
-        changedFields = Object.keys(solicitud.payload);
-        solicitudId = solicitud._id; // 🔑 CLAVE
-      }
-    } catch {
-      // fallback → edición normal
-    }
-  }
-
-  // 🗓 Normalizar fecha para el formulario
-  if (ventaInicial.fechaEfecto) {
-    ventaInicial.fechaEfecto = String(
-      ventaInicial.fechaEfecto
-    ).slice(0, 10);
-  }
-
-  // 🔥 ABRIR MODAL
-  setVentaEditando({
-    data: ventaInicial,
-    original,
-    changedFields,
-    solicitudId,
-    fromSocket: false,
-  });
-}}
-
-      />
+      <div className="flex flex-wrap items-center gap-2">
+        <div className="flex items-center gap-1 rounded-xl border border-slate-200 bg-white p-1">
+          <span className="px-2 text-[11px] font-semibold uppercase tracking-wide text-slate-400">Columnas</span>
+          <button
+            type="button"
+            onClick={() => setShowPoliza(v => !v)}
+            title={showPoliza ? "Ocultar póliza" : "Mostrar póliza"}
+            className={`inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-medium transition ${showPoliza ? "bg-slate-100 text-slate-700" : "text-slate-400 hover:bg-slate-50"}`}
+          >
+            {showPoliza ? <Eye size={13} /> : <EyeOff size={13} />}
+            Póliza
+          </button>
+          <button
+            type="button"
+            onClick={() => setShowTomador(v => !v)}
+            title={showTomador ? "Ocultar tomador" : "Mostrar tomador"}
+            className={`inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-medium transition ${showTomador ? "bg-slate-100 text-slate-700" : "text-slate-400 hover:bg-slate-50"}`}
+          >
+            {showTomador ? <Eye size={13} /> : <EyeOff size={13} />}
+            Tomador
+          </button>
+        </div>
+      </div>
     </div>
-  </div>
+
+    {ventasFiltradas.length === 0 ? (
+      <div className="flex min-h-[220px] flex-col items-center justify-center px-6 text-center">
+        <div className="mb-3 flex h-12 w-12 items-center justify-center rounded-2xl bg-slate-100 text-slate-400">
+          <Search size={20} />
+        </div>
+        <p className="text-sm font-semibold text-slate-800">No hay ventas para este criterio</p>
+        <p className="mt-1 text-xs text-slate-500">Prueba otro periodo o elimina algún filtro.</p>
+      </div>
+    ) : (
+      <div className="overflow-x-auto">
+        <table className="w-full min-w-[1050px] border-collapse text-sm">
+          <thead>
+            <tr className="bg-slate-50/90 text-left text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+              <th className="whitespace-nowrap border-b border-slate-200 px-5 py-3.5">Venta</th>
+              <th className="whitespace-nowrap border-b border-slate-200 px-4 py-3.5">Efecto</th>
+              {showPoliza && <th className="whitespace-nowrap border-b border-slate-200 px-4 py-3.5">Póliza</th>}
+              {showTomador && <th className="min-w-[220px] border-b border-slate-200 px-4 py-3.5">Tomador</th>}
+              <th className="whitespace-nowrap border-b border-slate-200 px-4 py-3.5">Aseguradora</th>
+              <th className="whitespace-nowrap border-b border-slate-200 px-4 py-3.5">Ramo</th>
+              <th className="whitespace-nowrap border-b border-slate-200 px-4 py-3.5 text-right">Prima</th>
+              <th className="whitespace-nowrap border-b border-slate-200 px-4 py-3.5">Usuario</th>
+              <th className="whitespace-nowrap border-b border-slate-200 px-5 py-3.5 text-right">Acciones</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-slate-100">
+            {[...ventasFiltradas]
+              .sort((a, b) => {
+                const da = new Date(a.createdAt || a.fechaEfecto || 0).getTime();
+                const db = new Date(b.createdAt || b.fechaEfecto || 0).getTime();
+                return db - da;
+              })
+              .map((v) => {
+                const anulada = Boolean((v as any).anulada || (v as any).estado === "ANULADA");
+                const pendienteRevision = v.estadoRevision === "pendiente";
+                return (
+                  <tr key={v._id} className={`group transition-colors hover:bg-blue-50/40 ${anulada ? "bg-slate-50/70" : "bg-white"}`}>
+                    <td className="whitespace-nowrap px-5 py-4 text-slate-700">
+                      <div className="font-medium text-slate-800">
+                        {v.createdAt ? new Date(v.createdAt).toLocaleDateString("es-ES") : "-"}
+                      </div>
+                      {pendienteRevision && (
+                        <button
+                          type="button"
+                          onClick={async () => {
+                            await api.patch(`/ventas/${v._id}/marcar-revision-leida`);
+                            setVentas(prev => prev.map(item => item._id === v._id ? { ...item, estadoRevision: null } : item));
+                            setRevisionCount(prev => Math.max(prev - 1, 0));
+                          }}
+                          className="mt-1 inline-flex items-center gap-1 rounded-full bg-blue-50 px-2 py-0.5 text-[10px] font-semibold text-blue-700 hover:bg-blue-100"
+                          title="Marcar revisión como leída"
+                        >
+                          Revisión pendiente
+                        </button>
+                      )}
+                    </td>
+                    <td className="whitespace-nowrap px-4 py-4 text-slate-600">
+                      {v.fechaEfecto ? new Date(v.fechaEfecto).toLocaleDateString("es-ES") : "-"}
+                    </td>
+                    {showPoliza && (
+                      <td className="whitespace-nowrap px-4 py-4 font-medium text-slate-800">
+                        {v.numeroPoliza || "-"}
+                      </td>
+                    )}
+                    {showTomador && (
+                      <td className="max-w-[300px] px-4 py-4">
+                        <div className="truncate font-medium text-slate-800" title={v.tomador}>{v.tomador || "-"}</div>
+                      </td>
+                    )}
+                    <td className="whitespace-nowrap px-4 py-4 text-slate-700">{v.aseguradora || "-"}</td>
+                    <td className="whitespace-nowrap px-4 py-4 text-slate-600">{v.ramo || "-"}</td>
+                    <td className="whitespace-nowrap px-4 py-4 text-right font-semibold text-slate-900">
+                      {Number(v.primaNeta || 0).toLocaleString("es-ES", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} €
+                    </td>
+                    <td className="whitespace-nowrap px-4 py-4">
+                      <span className="inline-flex max-w-[150px] truncate rounded-lg bg-slate-50 px-2.5 py-1.5 text-xs font-medium text-slate-600">
+                        {v.createdBy?.nombre || "-"}
+                      </span>
+                    </td>
+                    <td className="whitespace-nowrap px-5 py-4">
+                      <div className="flex justify-end gap-1.5 opacity-90 transition group-hover:opacity-100">
+                        <button
+                          type="button"
+                          onClick={async () => {
+                            const originalVenta = ventas.find(item => item._id === v._id);
+                            if (!originalVenta) return;
+                            const original = JSON.parse(JSON.stringify(originalVenta));
+                            let ventaInicial: any = JSON.parse(JSON.stringify(original));
+                            let changedFields: string[] = [];
+                            let solicitudId: string | undefined;
+                            if (original.estadoRevision === "pendiente") {
+                              try {
+                                const res = await api.get(`/ventas/${original._id}/solicitud-pendiente`);
+                                const solicitud = res.data;
+                                if (solicitud?.payload && typeof solicitud.payload === "object") {
+                                  ventaInicial = { ...ventaInicial, ...solicitud.payload };
+                                  changedFields = Object.keys(solicitud.payload);
+                                  solicitudId = solicitud._id;
+                                }
+                              } catch {
+                                // edición normal como fallback
+                              }
+                            }
+                            if (ventaInicial.fechaEfecto) ventaInicial.fechaEfecto = String(ventaInicial.fechaEfecto).slice(0, 10);
+                            setVentaEditando({ data: ventaInicial, original, changedFields, solicitudId, fromSocket: false });
+                          }}
+                          className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-500 transition hover:border-blue-200 hover:bg-blue-50 hover:text-blue-700"
+                          title="Editar venta"
+                          aria-label="Editar venta"
+                        >
+                          <Pencil size={15} />
+                        </button>
+                        {anulada ? (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const original = ventas.find(item => item._id === v._id);
+                              if (!original) return;
+                              setVentaARehabilitar(original);
+                              setSolicitudSeleccionada({ _id: original._id, tipo: "REHABILITAR_VENTA", estado: "PENDIENTE", venta: { _id: original._id }, local: true });
+                            }}
+                            className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-emerald-200 bg-emerald-50 text-emerald-700 transition hover:bg-emerald-100"
+                            title="Rehabilitar venta"
+                            aria-label="Rehabilitar venta"
+                          >
+                            <RotateCcw size={15} />
+                          </button>
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const original = ventas.find(item => item._id === v._id);
+                              if (original) setVentaAAnular(original);
+                            }}
+                            className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-amber-200 bg-amber-50 text-amber-700 transition hover:bg-amber-100"
+                            title="Anular venta"
+                            aria-label="Anular venta"
+                          >
+                            <Ban size={15} />
+                          </button>
+                        )}
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const original = ventas.find(item => item._id === v._id);
+                            if (original) setVentaAEliminar(original);
+                          }}
+                          className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-400 transition hover:border-red-200 hover:bg-red-50 hover:text-red-600"
+                          title={isAdmin ? "Eliminar venta" : "Solicitar eliminación"}
+                          aria-label={isAdmin ? "Eliminar venta" : "Solicitar eliminación"}
+                        >
+                          <Trash2 size={15} />
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                );
+              })}
+          </tbody>
+        </table>
+      </div>
+    )}
+  </section>
 )}
 
-
-
-      
       {/* ACCIONES */}
 <div className="flex flex-wrap gap-3">
   <button
@@ -1185,7 +1331,7 @@ function Select({ label, value, setValue, options }: any) {
       <select
         value={value}
         onChange={(e) => setValue(e.target.value)}
-        className="border rounded px-3 py-2 text-sm cursor-pointer"
+        className="h-10 rounded-xl border border-slate-200 bg-white px-3 text-sm text-slate-700 shadow-sm outline-none transition focus:border-blue-400 focus:ring-4 focus:ring-blue-50 cursor-pointer"
       >
         <option value="ALL">Todos</option>
         {options.map((o: string) => (
@@ -1211,7 +1357,7 @@ function FiltroMes({
       <select
         value={mes}
         onChange={(e) => setMes(Number(e.target.value))}
-        className="border rounded px-3 py-2 text-sm cursor-pointer"
+        className="h-10 rounded-xl border border-slate-200 bg-white px-3 text-sm text-slate-700 shadow-sm outline-none transition focus:border-blue-400 focus:ring-4 focus:ring-blue-50 cursor-pointer"
       >
         {meses.map((m, i) => (
           <option key={i} value={i + 1}>{m}</option>
@@ -1229,7 +1375,7 @@ function FiltroAnio({ anio, setAnio }: any) {
       <select
         value={anio}
         onChange={(e) => setAnio(Number(e.target.value))}
-        className="border rounded px-3 py-2 text-sm cursor-pointer"
+        className="h-10 rounded-xl border border-slate-200 bg-white px-3 text-sm text-slate-700 shadow-sm outline-none transition focus:border-blue-400 focus:ring-4 focus:ring-blue-50 cursor-pointer"
       >
         {[y - 2, y - 1, y, y + 1].map(year => (
           <option key={year} value={year}>{year}</option>
