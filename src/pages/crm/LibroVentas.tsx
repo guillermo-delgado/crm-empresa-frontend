@@ -11,7 +11,7 @@ import VentasSearchSkeleton from "../../components/crm/skeletons/VentasSearchSke
 import { registerVentasSocketHandlers } from "../../services/ventasSocketHandlers";
 import api from "../../services/api";
 import { useNavigate, useOutletContext } from "react-router-dom";
-import { ChevronLeft, ChevronRight, Pencil, Ban, RotateCcw, Trash2, Eye, EyeOff, CalendarDays, ShoppingCart, Search, X } from "lucide-react";
+import { ChevronLeft, ChevronRight, Pencil, Ban, RotateCcw, Trash2, Eye, EyeOff, Search } from "lucide-react";
 import * as XLSX from "xlsx";
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
@@ -211,10 +211,10 @@ const [ventaAAnular, setVentaAAnular] = useState<VentaAPI | null>(null);
   const [ramo, setRamo] = useState("ALL");
   const [kpis, setKpis] = useState<any>(null);
   const [semanaVentaIds, setSemanaVentaIds] = useState<string[] | null>(null);
-const [loadingKpis, setLoadingKpis] = useState(false);
+
 
 const fetchKPIs = async () => {
-  setLoadingKpis(true);
+ 
 
   try {
     const res = await api.get("/ventas/kpis", {
@@ -235,9 +235,7 @@ const fetchKPIs = async () => {
     setKpis(res.data);
   } catch {
     setKpis(null);
-  } finally {
-    setLoadingKpis(false);
-  }
+  } 
 };
 
 
