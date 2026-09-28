@@ -1260,13 +1260,19 @@ setVentas(prev =>
 setVentaAEliminar(null);
 
       } catch (error: any) {
-        if (error.response?.status === 403) {
-          // EMPLEADO → solo info, NADA MÁS
-          setVentaAEliminar(null);
-          setShowDeleteInfo(true);
-          return;
-        }
-      }
+  // EMPLEADO → solicitud de eliminación
+  if (error.response?.status === 403) {
+    setVentaAEliminar(null);
+    setShowDeleteInfo(true);
+    return;
+  }
+
+  // Cualquier otro error → mostrar mensaje real del backend
+  alert(
+    error.response?.data?.message ||
+    "Se ha producido un error al eliminar la venta."
+  );
+}
     }}
   />
 )}
