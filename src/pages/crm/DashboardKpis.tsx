@@ -1079,16 +1079,7 @@ function VentasDiarias({
 
   const maxVentas = Math.max(...datos.map((item) => item.ventas), 1);
   const maxProduccion = Math.max(...datos.map((item) => item.total), 1);
-  const puntos = datos
-    .map((item) => {
-      const x =
-        datos.length === 1
-          ? 150
-          : 12 + ((item.dia - 1) / (datos.length - 1)) * 276;
-      const y = 190 - (item.total / maxProduccion) * 165;
-      return `${x},${y}`;
-    })
-    .join(" ");
+  
 
   return (
   <div className="w-full">
