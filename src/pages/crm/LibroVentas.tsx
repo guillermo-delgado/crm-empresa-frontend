@@ -12,7 +12,7 @@ import { useOutletContext } from "react-router-dom";
 import {
   ChevronLeft, ChevronRight, Pencil, Ban, RotateCcw, Trash2, Eye, EyeOff, Search,
   BookOpen, Plus, FileSpreadsheet, FileText, Inbox, AlertTriangle, X,
-  ArrowUp, ArrowDown, ArrowUpDown, SlidersHorizontal, ChevronUp, ChevronDown,
+  ArrowUp, ArrowDown, ArrowUpDown, SlidersHorizontal, ChevronUp, ChevronDown, MessageSquareText,
 } from "lucide-react";
 import * as XLSX from "xlsx";
 import jsPDF from "jspdf";
@@ -20,6 +20,7 @@ import autoTable from "jspdf-autotable";
 import { getSocket } from "../../services/socket";
 // Formulario único de ventas (crear / editar). Ajusta la ruta si está en otra carpeta.
 import NuevaVenta from "./NuevaVenta";
+import BienvenidaV2 from "./BienvenidaV2";
 import DashboardKpis from "../crm/DashboardKpis";
 
 type VentaAPI = {
@@ -37,6 +38,7 @@ type VentaAPI = {
   ramo: string;
   primaNeta: number;
   formaPago?: string;
+  observaciones?: string;
 
   createdBy?: {
     _id: string;
@@ -796,6 +798,9 @@ export default function LibroVentas() {
 
   return (
     <div className="min-h-screen space-y-6 bg-[#f1f3f8] p-4 sm:p-8">
+      {/* BIENVENIDA CRM V2 (una sola vez por empleado) */}
+      <BienvenidaV2 />
+
       {/* AVISO ADMIN */}
       {isAdmin && solicitudes.length > 0 && (
         <div className="flex flex-wrap items-center gap-3 rounded-2xl border border-amber-200 bg-amber-50 px-5 py-3.5 text-amber-900 shadow-sm">
@@ -1257,6 +1262,15 @@ export default function LibroVentas() {
                             >
                               {v.tomador || "-"}
                             </div>
+                            {v.observaciones?.trim() && (
+                              <span
+                                className="inline-flex shrink-0 items-center text-[#2f5bd3]"
+                                title={v.observaciones.trim()}
+                                aria-label="Tiene observaciones"
+                              >
+                                <MessageSquareText className="h-4 w-4" />
+                              </span>
+                            )}
                           </div>
                         ),
                       },
@@ -1642,4 +1656,4 @@ const meses = [
 
 function mesNombre(mes: number) {
   return meses[mes - 1];
-}
+} 
