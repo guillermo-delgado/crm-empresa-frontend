@@ -1,4 +1,3 @@
-
 import { useMemo, useState } from "react";
 import {
   BarChart3,
@@ -8,6 +7,7 @@ import {
   X,
 } from "lucide-react";
 import {
+  Area,
   Bar,
   CartesianGrid,
   ComposedChart,
@@ -38,13 +38,13 @@ type Props = {
 };
 
 const CARD =
-  "rounded-xl border border-slate-200 bg-white shadow-sm";
+  "rounded-2xl border border-slate-200/70 bg-white shadow-[0_1px_2px_rgba(29,36,51,0.04),0_10px_28px_-18px_rgba(29,36,51,0.22)]";
 
   
 
 const coloresRamo = [
-  "#2563eb",
-  "#16a34a",
+  "#2f5bd3",
+  "#10b981",
   "#f59e0b",
   "#f43f5e",
   "#8b5cf6",
@@ -88,45 +88,45 @@ function KPIBox({
     typeof variation === "number" && variation < 0;
 
   return (
-    <div className={`${CARD} min-h-[149px] p-5`}>
+    <div className={`${CARD} relative min-h-[149px] overflow-hidden p-5 transition-shadow hover:shadow-[0_14px_32px_-18px_rgba(29,36,51,0.3)]`}>
       <div className="flex items-start gap-4">
         <div
-          className={`flex h-14 w-14 shrink-0 items-center justify-center rounded-xl ${iconBackground} ${iconColor}`}
+          className={`flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl ${iconBackground} ${iconColor}`}
         >
           {icon}
         </div>
 
         <div className="min-w-0 flex-1">
-          <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+          <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-500">
             {title}
           </p>
 
           {subtitle && (
-            <p className="text-xs font-semibold uppercase text-blue-600">
+            <p className="text-[11px] font-semibold uppercase tracking-[0.08em] text-[#2f5bd3]">
               {subtitle}
             </p>
           )}
 
-          <p className="mt-2 text-[25px] font-bold leading-none tracking-tight text-slate-950">
+          <p className="mt-2.5 text-[26px] font-bold leading-none tracking-tight text-slate-900">
             {value}
           </p>
 
           {isAdmin && typeof variation === "number" && (
             <div className="mt-3">
               <span
-                className={`text-sm font-semibold ${
+                className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-semibold ${
                   positive
-                    ? "text-emerald-600"
+                    ? "bg-emerald-50 text-emerald-700"
                     : negative
-                    ? "text-red-600"
-                    : "text-slate-500"
+                    ? "bg-red-50 text-red-700"
+                    : "bg-slate-100 text-slate-500"
                 }`}
               >
                 {positive ? "↑ +" : negative ? "↓ " : ""}
                 {variation.toFixed(0)}%
               </span>
 
-              <p className="mt-0.5 text-xs text-slate-500">
+              <p className="mt-1.5 text-xs text-slate-400">
                 Respecto al mes anterior
               </p>
             </div>
@@ -143,11 +143,11 @@ function MaximizeButton({ onClick, label }: { onClick: () => void; label: string
     <button
       type="button"
       onClick={onClick}
-      className="rounded-lg p-1.5 text-slate-400 transition hover:bg-slate-100 hover:text-slate-700"
+      className="rounded-full p-2 text-slate-400 transition hover:bg-[#eef1fa] hover:text-[#2f5bd3]"
       aria-label={label}
       title="Maximizar"
     >
-      <Maximize2 size={18} />
+      <Maximize2 size={16} />
     </button>
   );
 }
@@ -167,7 +167,7 @@ function MaximizablePanel({
     <>
       <section className={`${CARD} flex min-w-0 flex-col p-5`}>
         <div className="mb-5 flex items-center justify-between gap-3">
-          <h3 className="text-sm font-semibold text-slate-900">
+          <h3 className="text-[15px] font-semibold tracking-tight text-slate-900">
             {title}
             {subtitle && (
               <span className="ml-1 font-normal text-slate-500">
@@ -198,8 +198,8 @@ function MaximizablePanel({
       </section>
 
       {maximizado && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/60 p-4 sm:p-8">
-          <section className="relative max-h-[95vh] w-full max-w-6xl overflow-y-auto rounded-2xl bg-white p-6 shadow-2xl sm:p-8">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 p-4 backdrop-blur-sm sm:p-8">
+          <section className="relative max-h-[95vh] w-full max-w-6xl overflow-y-auto rounded-3xl bg-white p-6 shadow-2xl sm:p-8">
             <div className="mb-8 flex items-center justify-between gap-4">
               <div>
                 <h2 className="text-xl font-bold text-slate-900 sm:text-2xl">
@@ -217,7 +217,7 @@ function MaximizablePanel({
               <button
                 type="button"
                 onClick={() => setMaximizado(false)}
-                className="rounded-lg p-2 text-slate-500 transition hover:bg-slate-100 hover:text-slate-900"
+                className="rounded-full p-2 text-slate-500 transition hover:bg-slate-100 hover:text-slate-900"
                 aria-label={`Cerrar ${title}`}
                 title="Cerrar"
               >
@@ -277,76 +277,112 @@ function RamoDonut({
     });
   }, [datos, totalPolizas]);
 
-  const gradientPolizas =
-    segmentos.length > 0
-      ? `conic-gradient(${segmentos
-          .map((s) => `${s.color} ${s.polizasInicio}% ${s.polizasFin}%`)
-          .join(", ")})`
-      : "#e2e8f0";
+  const valoresPolizas = segmentos.map((s) => ({
+    pct: s.porcentajePolizas,
+    color: s.color,
+    nombre: `${s.ramo}: ${s.polizas}`,
+  }));
 
-  const gradientPrima =
-    segmentos.length > 0
-      ? `conic-gradient(${segmentos
-          .map((s) => `${s.color} ${s.primaInicio}% ${s.primaFin}%`)
-          .join(", ")})`
-      : "#e2e8f0";
+  const valoresPrima = segmentos.map((s) => ({
+    pct: s.porcentajePrima,
+    color: s.color,
+    nombre: `${s.ramo}: ${euros(s.prima)}`,
+  }));
 
   const Donut = ({
-    gradient,
+    valores,
     value,
     label,
     compact = false,
   }: {
-    gradient: string;
+    valores: Array<{ pct: number; color: string; nombre: string }>;
     value: string | number;
     label: string;
     compact?: boolean;
-  }) => (
-    <div
-      className={
-        compact
-          ? "relative h-[132px] w-[132px] shrink-0"
-          : "relative h-[210px] w-[210px] shrink-0"
-      }
-    >
+  }) => {
+    const size = compact ? 132 : 210;
+    const grosor = compact ? 14 : 20;
+    const radio = (size - grosor) / 2;
+    const circunferencia = 2 * Math.PI * radio;
+    const visibles = valores.filter((v) => v.pct > 0);
+    const separacion = visibles.length > 1 ? grosor + (compact ? 3 : 5) : 0;
+    let acumulado = 0;
+
+    return (
       <div
-        className="h-full w-full rounded-full"
-        style={{ background: gradient }}
-      />
-      <div
-        className={
-          compact
-            ? "absolute inset-[24%] flex flex-col items-center justify-center rounded-full bg-white text-center"
-            : "absolute inset-[25%] flex flex-col items-center justify-center rounded-full bg-white text-center"
-        }
+        className="relative shrink-0"
+        style={{ width: size, height: size }}
       >
-        <span
-          className={
-            compact
-              ? "text-lg font-bold leading-none text-slate-900"
-              : "whitespace-nowrap text-[15px] font-bold leading-tight tracking-[-0.03em] text-slate-900"
-          }
+        <svg
+          width={size}
+          height={size}
+          viewBox={`0 0 ${size} ${size}`}
+          className="-rotate-90"
         >
-          {value}
-        </span>
-        <span
-          className={
-            compact
-              ? "mt-1 text-[10px] text-slate-500"
-              : "mt-1 text-xs text-slate-500"
-          }
-        >
-          {label}
-        </span>
+          <circle
+            cx={size / 2}
+            cy={size / 2}
+            r={radio}
+            fill="none"
+            stroke="#eef1f8"
+            strokeWidth={grosor}
+          />
+
+          {visibles.map((v) => {
+            const largoTotal = (circunferencia * v.pct) / 100;
+            const largo = Math.max(largoTotal - separacion, 0.01);
+            const inicio = acumulado + separacion / 2;
+            acumulado += largoTotal;
+
+            return (
+              <circle
+                key={v.nombre}
+                cx={size / 2}
+                cy={size / 2}
+                r={radio}
+                fill="none"
+                stroke={v.color}
+                strokeWidth={grosor}
+                strokeLinecap={visibles.length > 1 ? "round" : "butt"}
+                strokeDasharray={`${largo} ${circunferencia - largo}`}
+                strokeDashoffset={-inicio}
+                className="transition-opacity hover:opacity-80"
+              >
+                <title>{v.nombre}</title>
+              </circle>
+            );
+          })}
+        </svg>
+
+        <div className="absolute inset-0 flex flex-col items-center justify-center text-center">
+          <span
+            className={
+              compact
+                ? "text-xl font-bold leading-none tracking-tight text-slate-900"
+                : "whitespace-nowrap text-base font-bold leading-tight tracking-tight text-slate-900"
+            }
+          >
+            {value}
+          </span>
+          <span
+            className={
+              compact
+                ? "mt-1 text-[10px] font-medium uppercase tracking-wider text-slate-400"
+                : "mt-1 text-xs font-medium uppercase tracking-wider text-slate-400"
+            }
+          >
+            {label}
+          </span>
+        </div>
       </div>
-    </div>
-  );
+    );
+  };
 
   if (!expanded) {
     return (
       <div className="grid w-full min-w-0 grid-cols-[132px_minmax(0,1fr)] items-center gap-4">
         <Donut
-          gradient={gradientPolizas}
+          valores={valoresPolizas}
           value={totalPolizas}
           label="pólizas"
           compact
@@ -384,7 +420,7 @@ function RamoDonut({
     <div className="w-full">
       {/* Resumen superior */}
       <div className="mb-6 grid grid-cols-2 gap-4">
-        <div className="rounded-xl border border-slate-200 bg-slate-50/70 px-5 py-4">
+        <div className="rounded-2xl border border-slate-200/70 bg-[#f5f7fc] px-5 py-4">
           <div className="text-xs font-medium uppercase tracking-wide text-slate-500">
             Pólizas
           </div>
@@ -396,7 +432,7 @@ function RamoDonut({
           </div>
         </div>
 
-        <div className="rounded-xl border border-slate-200 bg-slate-50/70 px-5 py-4">
+        <div className="rounded-2xl border border-slate-200/70 bg-[#f5f7fc] px-5 py-4">
           <div className="text-xs font-medium uppercase tracking-wide text-slate-500">
             Prima total
           </div>
@@ -411,7 +447,7 @@ function RamoDonut({
 
       {/* Dos análisis independientes */}
       <div className="grid grid-cols-1 gap-5 xl:grid-cols-2">
-        <div className="rounded-2xl border border-slate-200 bg-white p-5">
+        <div className="rounded-2xl border border-slate-200/70 bg-white p-5">
           <div className="mb-4">
             <h3 className="text-sm font-semibold text-slate-900">
               Distribución por pólizas
@@ -423,7 +459,7 @@ function RamoDonut({
 
           <div className="flex items-center gap-7">
             <Donut
-              gradient={gradientPolizas}
+              valores={valoresPolizas}
               value={totalPolizas}
               label="pólizas"
             />
@@ -460,7 +496,7 @@ function RamoDonut({
           </div>
         </div>
 
-        <div className="rounded-2xl border border-slate-200 bg-white p-5">
+        <div className="rounded-2xl border border-slate-200/70 bg-white p-5">
           <div className="mb-4">
             <h3 className="text-sm font-semibold text-slate-900">
               Distribución por prima
@@ -472,7 +508,7 @@ function RamoDonut({
 
           <div className="flex items-center gap-7">
             <Donut
-              gradient={gradientPrima}
+              valores={valoresPrima}
               value={euros(totalPrima)}
               label="prima"
             />
@@ -754,7 +790,7 @@ function ProduccionSemanal({
           return (
             <div
               key={`${semana.inicio}-${semana.fin}`}
-              className="grid grid-cols-[minmax(0,1fr)_auto_auto_28px] items-center gap-2 rounded-lg px-1.5 py-1.5"
+              className="grid grid-cols-[minmax(0,1fr)_auto_auto_28px] items-center gap-2 rounded-xl px-2 py-1.5 transition-colors hover:bg-[#f1f3f8]"
             >
               <button
                 type="button"
@@ -770,13 +806,13 @@ function ProduccionSemanal({
                     : "cursor-pointer"
                 }`}
               >
-                <div className="mb-1 truncate text-[11px] text-slate-600 group-hover:text-blue-700">
+                <div className="mb-1 truncate text-[11px] text-slate-600 group-hover:text-[#2f5bd3]">
                   Semana {index + 1} (
                   {formatoFecha(semana.inicio)} - {formatoFecha(semana.fin)})
                 </div>
-                <div className="h-2 overflow-hidden rounded-full bg-slate-100">
+                <div className="h-2 overflow-hidden rounded-full bg-[#e6eaf5]">
                   <div
-                    className="h-full rounded-full bg-blue-600 transition-all group-hover:bg-blue-700"
+                    className="h-full rounded-full bg-gradient-to-r from-[#2f5bd3] to-[#5b8def] transition-all group-hover:from-[#2548b3] group-hover:to-[#2f5bd3]"
                     style={{ width: `${porcentaje}%` }}
                   />
                 </div>
@@ -842,7 +878,7 @@ function ActividadComercialMaximizada({
   return (
     <div className="space-y-6">
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-        <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
+        <div className="rounded-2xl border border-slate-200/70 bg-[#f5f7fc] p-4">
           <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
             Pólizas creadas
           </p>
@@ -851,7 +887,7 @@ function ActividadComercialMaximizada({
           </p>
         </div>
 
-        <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
+        <div className="rounded-2xl border border-slate-200/70 bg-[#f5f7fc] p-4">
           <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
             Producción generada
           </p>
@@ -860,7 +896,7 @@ function ActividadComercialMaximizada({
           </p>
         </div>
 
-        <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
+        <div className="rounded-2xl border border-slate-200/70 bg-[#f5f7fc] p-4">
           <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
             Prima media
           </p>
@@ -870,14 +906,14 @@ function ActividadComercialMaximizada({
         </div>
       </div>
 
-      <div className="rounded-xl border border-slate-200 bg-white p-3 sm:p-5">
+      <div className="rounded-2xl border border-slate-200/70 bg-white p-3 sm:p-5">
         <div className="mb-5 flex flex-wrap items-center gap-5 text-xs text-slate-600">
           <div className="flex items-center gap-2">
-            <span className="h-3 w-3 rounded-sm bg-blue-300" />
+            <span className="h-3 w-3 rounded-full bg-[#8fa9ee]" />
             Pólizas creadas
           </div>
           <div className="flex items-center gap-2">
-            <span className="h-1 w-5 rounded-full bg-blue-800" />
+            <span className="h-1 w-5 rounded-full bg-[#2f5bd3]" />
             Producción (€)
           </div>
         </div>
@@ -888,7 +924,21 @@ function ActividadComercialMaximizada({
               data={datosGrafico}
               margin={{ top: 12, right: 18, left: 4, bottom: 8 }}
             >
-              <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
+              <defs>
+                <linearGradient id="dkBarra" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="0%" stopColor="#7d9aeb" />
+                  <stop offset="100%" stopColor="#d5def7" />
+                </linearGradient>
+                <linearGradient id="dkArea" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="0%" stopColor="#2f5bd3" stopOpacity="0.2" />
+                  <stop offset="100%" stopColor="#2f5bd3" stopOpacity="0" />
+                </linearGradient>
+              </defs>
+              <CartesianGrid
+                strokeDasharray="4 4"
+                stroke="#e6eaf5"
+                vertical={false}
+              />
               <XAxis
                 dataKey="dia"
                 tick={{ fill: "#64748b", fontSize: 11 }}
@@ -930,7 +980,7 @@ function ActividadComercialMaximizada({
                 }}
               />
               <Tooltip
-                cursor={{ fill: "#f1f5f9" }}
+                cursor={{ fill: "#f1f3f8" }}
                 content={({ active, payload, label }: any) => {
                   if (!active || !payload?.length) return null;
 
@@ -942,7 +992,7 @@ function ActividadComercialMaximizada({
                       ?.value ?? 0;
 
                   return (
-                    <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-xl">
+                    <div className="rounded-2xl border border-slate-200/70 bg-white p-4 shadow-xl">
                       <p className="mb-3 text-sm font-semibold text-slate-900">
                         Día {label}
                       </p>
@@ -964,23 +1014,34 @@ function ActividadComercialMaximizada({
                   );
                 }}
               />
+              <Area
+                yAxisId="euros"
+                type="monotone"
+                dataKey="produccion"
+                name="Producción"
+                stroke="none"
+                fill="url(#dkArea)"
+                legendType="none"
+                tooltipType="none"
+                isAnimationActive={false}
+              />
               <Bar
                 yAxisId="polizas"
                 dataKey="polizas"
                 name="Pólizas creadas"
-                fill="#93c5fd"
-                radius={[5, 5, 0, 0]}
-                maxBarSize={28}
+                fill="url(#dkBarra)"
+                radius={[8, 8, 0, 0]}
+                maxBarSize={26}
               />
               <Line
                 yAxisId="euros"
                 type="monotone"
                 dataKey="produccion"
                 name="Producción"
-                stroke="#172b91"
+                stroke="#2f5bd3"
                 strokeWidth={3}
-                dot={{ r: 3, fill: "#172b91", strokeWidth: 0 }}
-                activeDot={{ r: 6 }}
+                dot={false}
+                activeDot={{ r: 6, fill: "#2f5bd3", stroke: "#ffffff", strokeWidth: 3 }}
                 connectNulls
               />
             </ComposedChart>
@@ -988,7 +1049,7 @@ function ActividadComercialMaximizada({
         </div>
       </div>
 
-      <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
+      <div className="rounded-2xl border border-slate-200/70 bg-[#f5f7fc] p-4">
         <p className="text-sm font-semibold text-slate-900">
           Detalle diario
         </p>
@@ -998,7 +1059,7 @@ function ActividadComercialMaximizada({
             .map((item) => (
               <div
                 key={item.dia}
-                className="rounded-lg border border-slate-200 bg-white p-3"
+                className="rounded-xl border border-slate-200/70 bg-white p-3"
               >
                 <p className="text-xs text-slate-500">Día {item.dia}</p>
                 <p className="mt-1 text-sm font-semibold text-slate-900">
@@ -1079,93 +1140,106 @@ function VentasDiarias({
 
   const maxVentas = Math.max(...datos.map((item) => item.ventas), 1);
   const maxProduccion = Math.max(...datos.map((item) => item.total), 1);
-  
+
+  const ANCHO = 300;
+  const BASE = 150;
+
+  const puntos = datos.map((item) => ({
+    x: datos.length === 1 ? ANCHO / 2 : ((item.dia - 1) / (datos.length - 1)) * ANCHO,
+    y: BASE - (item.total / maxProduccion) * 125,
+  }));
+
+  const trazo = puntos
+    .map((punto, index) => {
+      if (index === 0) return `M ${punto.x} ${punto.y}`;
+      const anterior = puntos[index - 1];
+      const medio = (anterior.x + punto.x) / 2;
+      return `C ${medio} ${anterior.y}, ${medio} ${punto.y}, ${punto.x} ${punto.y}`;
+    })
+    .join(" ");
+
+  const area = `${trazo} L ${puntos[puntos.length - 1].x} ${BASE} L ${puntos[0].x} ${BASE} Z`;
 
   return (
-  <div className="w-full">
-    {/* Leyenda */}
-    <div className="mb-4 flex items-center justify-center gap-7 text-[11px] font-medium text-slate-500">
-      <div className="flex items-center gap-2">
-        <span className="h-2.5 w-5 rounded-sm bg-blue-300" />
-        <span>Nº de pólizas</span>
+    <div className="w-full">
+      {/* Leyenda */}
+      <div className="mb-4 flex items-center justify-center gap-2 text-[11px] font-medium text-slate-600">
+        <span className="flex items-center gap-2 rounded-full bg-[#eef1fa] px-3 py-1">
+          <span className="h-2.5 w-2.5 rounded-full bg-[#8fa9ee]" />
+          Nº de pólizas
+        </span>
+        <span className="flex items-center gap-2 rounded-full bg-[#eef1fa] px-3 py-1">
+          <span className="h-[3px] w-4 rounded-full bg-[#2f5bd3]" />
+          Producción (€)
+        </span>
       </div>
 
-      <div className="flex items-center gap-2">
-        <span className="h-[3px] w-6 rounded-full bg-blue-800" />
-        <span>Producción (€)</span>
-      </div>
-    </div>
+      {/* Gráfico */}
+      <div className="relative h-[190px] w-full">
+        {/* Rejilla */}
+        <div className="pointer-events-none absolute inset-x-0 bottom-7 top-3 flex flex-col justify-between">
+          <div className="border-t border-dashed border-slate-200/80" />
+          <div className="border-t border-dashed border-slate-200/80" />
+          <div className="border-t border-dashed border-slate-200/80" />
+          <div className="border-t border-slate-200" />
+        </div>
 
-    {/* Gráfico */}
-    <div className="relative h-[190px] w-full">
-      {/* Rejilla */}
-      <div className="pointer-events-none absolute inset-x-0 top-3 bottom-7 flex flex-col justify-between">
-        <div className="border-t border-slate-100" />
-        <div className="border-t border-slate-100" />
-        <div className="border-t border-slate-100" />
-        <div className="border-t border-slate-200" />
-      </div>
-
-      {/* Barras */}
-      <div className="absolute inset-x-0 top-3 bottom-7 flex items-end gap-[3px]">
-        {datos.map((item) => (
-          <div
-            key={item.dia}
-            className="flex h-full flex-1 items-end"
-          >
+        {/* Barras */}
+        <div className="absolute inset-x-0 bottom-7 top-3 flex items-end gap-[3px]">
+          {datos.map((item) => (
             <div
-              className="w-full rounded-t-[3px] bg-blue-300/70 transition-all"
-              style={{
-                height: `${(item.ventas / maxVentas) * 100}%`,
-                minHeight: item.ventas > 0 ? "3px" : "0",
-              }}
-              title={`${item.dia}: ${item.ventas} pólizas · ${euros(item.total)}`}
-            />
-          </div>
-        ))}
-      </div>
+              key={item.dia}
+              className="flex h-full flex-1 items-end"
+            >
+              <div
+                className="w-full rounded-t-md bg-gradient-to-t from-[#d5def7] to-[#9db4f0] transition-all hover:from-[#b8c8f4] hover:to-[#6f8fe6]"
+                style={{
+                  height: `${(item.ventas / maxVentas) * 100}%`,
+                  minHeight: item.ventas > 0 ? "4px" : "0",
+                }}
+                title={`${item.dia}: ${item.ventas} pólizas · ${euros(item.total)}`}
+              />
+            </div>
+          ))}
+        </div>
 
-      {/* Línea de producción */}
-      <svg
-        viewBox="0 0 300 160"
-        preserveAspectRatio="none"
-        className="pointer-events-none absolute inset-x-0 top-3 h-[160px] w-full"
-      >
-        <polyline
-          points={datos
-            .map((item) => {
-              const x =
-                datos.length === 1
-                  ? 150
-                  : ((item.dia - 1) / (datos.length - 1)) * 300;
+        {/* Línea de producción suavizada con área */}
+        <svg
+          viewBox={`0 0 ${ANCHO} 160`}
+          preserveAspectRatio="none"
+          className="pointer-events-none absolute inset-x-0 top-3 h-[160px] w-full"
+        >
+          <defs>
+            <linearGradient id="dkAreaCompacta" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%" stopColor="#2f5bd3" stopOpacity="0.22" />
+              <stop offset="100%" stopColor="#2f5bd3" stopOpacity="0" />
+            </linearGradient>
+          </defs>
+          <path d={area} fill="url(#dkAreaCompacta)" />
+          <path
+            d={trazo}
+            fill="none"
+            stroke="#2f5bd3"
+            strokeWidth="2.5"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            vectorEffect="non-scaling-stroke"
+          />
+        </svg>
 
-              const y =
-                150 - (item.total / maxProduccion) * 130;
-
-              return `${x},${y}`;
-            })
-            .join(" ")}
-          fill="none"
-          stroke="#1e40af"
-          strokeWidth="2.5"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-        />
-      </svg>
-
-      {/* Eje inferior */}
-      <div className="absolute inset-x-0 bottom-0 flex justify-between text-[10px] font-medium text-slate-400">
-        <span>1</span>
-        <span>5</span>
-        <span>10</span>
-        <span>15</span>
-        <span>20</span>
-        <span>25</span>
-        <span>{datos.length}</span>
+        {/* Eje inferior */}
+        <div className="absolute inset-x-0 bottom-0 flex justify-between text-[10px] font-medium text-slate-400">
+          <span>1</span>
+          <span>5</span>
+          <span>10</span>
+          <span>15</span>
+          <span>20</span>
+          <span>25</span>
+          <span>{datos.length}</span>
+        </div>
       </div>
     </div>
-  </div>
-);
+  );
 }
 
 export default function DashboardKpis({
@@ -1258,8 +1332,8 @@ export default function DashboardKpis({
               variation={kpis?.produccionCreated?.variacionPct}
               isAdmin
               icon={<BarChart3 size={27} />}
-              iconBackground="bg-blue-100"
-              iconColor="text-blue-600"
+              iconBackground="bg-[#e3eafb]"
+              iconColor="text-[#2f5bd3]"
             />
 
             <KPIBox
@@ -1288,22 +1362,22 @@ export default function DashboardKpis({
               value={euros(primaMedia)}
               isAdmin={false}
               icon={<BarChart3 size={27} />}
-              iconBackground="bg-blue-100"
-              iconColor="text-blue-600"
+              iconBackground="bg-[#e3eafb]"
+              iconColor="text-[#2f5bd3]"
             />
           </>
         )}
 
         {isAdmin && (
-          <div className={`${CARD} min-w-0 p-4`}>
-            <h3 className="mb-3 text-sm font-semibold text-slate-900">
+          <div className={`${CARD} min-w-0 p-5`}>
+            <h3 className="mb-3 text-[15px] font-semibold tracking-tight text-slate-900">
               Producción por ramo
             </h3>
             <div className="grid grid-cols-2 gap-2 xl:grid-cols-3">
               {produccionPorRamo.map(([ramo, total]) => (
                 <div
                   key={ramo}
-                  className="min-w-0 rounded-lg border border-slate-200 px-3 py-2"
+                  className="min-w-0 rounded-xl border border-slate-200/70 bg-[#f8f9fd] px-3 py-2"
                 >
                   <p className="truncate text-xs text-slate-500" title={ramo}>
                     {ramo}

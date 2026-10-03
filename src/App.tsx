@@ -13,7 +13,8 @@ import NuevaVenta from "./pages/crm/NuevaVenta";
 import CrearUsuario from "./pages/admin/CrearUsuario";
 import HorarioCRM from "./pages/crm/horario/HorarioCRM";
 import Dashboard from "./pages/crm/Dashboard";
-import ExcelComisiones from "./pages/crm/ExcelComisiones"; // ✅ NUEVO
+import ExcelComisiones from "./pages/crm/ExcelComisiones";
+import Sorteos from "./pages/crm/Sorteos";
 
 /* ===== AUTH ===== */
 import Login from "./pages/auth/Login";
@@ -36,10 +37,11 @@ import { getSocket } from "./services/socket";
 ====================================================== */
 function AppInner() {
   const navigate = useNavigate();
+
   const [facturaProgress, setFacturaProgress] = useState<{
-  porcentaje: number;
-  texto: string;
-} | null>(null);
+    porcentaje: number;
+    texto: string;
+  } | null>(null);
 
   useEffect(() => {
     const socket = getSocket();
@@ -74,17 +76,20 @@ function AppInner() {
       navigate("/laboral/control-horario", { replace: true });
     });
 
-    socket.on("factura_progreso", (data: { porcentaje: number; texto: string }) => {
-  console.log("🔥 PROGRESO FACTURA APP:", data);
-  setFacturaProgress(data);
-});
+    socket.on(
+      "factura_progreso",
+      (data: { porcentaje: number; texto: string }) => {
+        console.log("🔥 PROGRESO FACTURA APP:", data);
+        setFacturaProgress(data);
+      }
+    );
 
     return () => {
       socket.off("connect");
       socket.off("connect_error");
       socket.off("SOLICITUD_RESUELTA");
       socket.off("FORCE_LOGOUT");
-socket.off("factura_progreso");
+      socket.off("factura_progreso");
     };
   }, [navigate]);
 
@@ -135,6 +140,7 @@ socket.off("factura_progreso");
           </ProtectedRoute>
         }
       >
+        {/* DASHBOARD */}
         <Route
           path="/crm/dashboard"
           element={
@@ -144,9 +150,18 @@ socket.off("factura_progreso");
           }
         />
 
-        <Route path="/crm/libro-ventas" element={<LibroVentas />} />
-        <Route path="/crm/nueva-venta" element={<NuevaVenta />} />
+        {/* VENTAS */}
+        <Route
+          path="/crm/libro-ventas"
+          element={<LibroVentas />}
+        />
 
+        <Route
+          path="/crm/nueva-venta"
+          element={<NuevaVenta />}
+        />
+
+        {/* HORARIO */}
         <Route
           path="/crm/horario"
           element={
@@ -156,6 +171,7 @@ socket.off("factura_progreso");
           }
         />
 
+        {/* USUARIOS */}
         <Route
           path="/crm/usuarios"
           element={
@@ -165,13 +181,25 @@ socket.off("factura_progreso");
           }
         />
 
-        {/* ✅ NUEVA RUTA SOLO ADMIN */}
+        {/* EXCEL COMISIONES */}
         <Route
           path="/crm/excel-comisiones"
           element={
             <ProtectedRoute adminOnly>
-              <ExcelComisiones facturaProgress={facturaProgress} />
+              <ExcelComisiones
+                facturaProgress={facturaProgress}
+              />
             </ProtectedRoute>
+          }
+        />
+
+        {/* 🎁 SORTEOS */}
+        <Route
+          path="/crm/sorteos"
+          element={
+            
+              <Sorteos />
+           
           }
         />
       </Route>
@@ -179,7 +207,12 @@ socket.off("factura_progreso");
       {/* ================= DEFAULT ================= */}
       <Route
         path="*"
-        element={<Navigate to="/laboral/control-horario" replace />}
+        element={
+          <Navigate
+            to="/laboral/control-horario"
+            replace
+          />
+        }
       />
     </Routes>
   );

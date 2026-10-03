@@ -522,7 +522,7 @@ if (cliente?.tomador) {
   };
 
   return (
-    <div className="min-h-screen bg-slate-100 px-5 py-6">
+    <div className="min-h-screen bg-[#f1f3f8] px-5 py-6">
       <div className="max-w-7xl mx-auto">
 
         {/* =====================================================
@@ -533,7 +533,7 @@ if (cliente?.tomador) {
 
           <div className="flex items-center gap-4">
 
-            <div className="w-14 h-14 rounded-xl bg-slate-800 flex items-center justify-center shadow-sm">
+            <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-[#2f5bd3] to-[#5b8def] flex items-center justify-center shadow-[0_12px_24px_-12px_rgba(47,91,211,0.8)]">
 
               <svg
                 width="30"
@@ -565,7 +565,7 @@ if (cliente?.tomador) {
 
             <div>
 
-              <h1 className="text-3xl font-bold text-slate-800">
+              <h1 className="text-3xl font-bold tracking-tight text-slate-900">
                 Nueva venta
               </h1>
 
@@ -584,7 +584,7 @@ if (cliente?.tomador) {
                 "/crm/libro-ventas"
               )
             }
-            className="flex items-center justify-center gap-2 px-5 py-3 bg-white border border-slate-200 rounded-xl text-slate-700 font-semibold shadow-sm hover:bg-slate-50 cursor-pointer"
+            className="flex items-center justify-center gap-2 px-5 py-3 bg-white border border-slate-200/80 rounded-full text-slate-700 font-semibold shadow-sm transition hover:bg-[#eef1fa] hover:text-[#2f5bd3] cursor-pointer"
           >
             <span className="text-xl">
               ←
@@ -599,7 +599,7 @@ if (cliente?.tomador) {
             BLOQUE PÓLIZA
         ===================================================== */}
 
-        <div className="bg-white border border-slate-200 rounded-2xl shadow-sm p-4 mb-5">
+        <div className="bg-white border border-slate-200/70 rounded-3xl shadow-[0_1px_2px_rgba(29,36,51,0.04),0_14px_34px_-20px_rgba(29,36,51,0.25)] p-4 mb-5">
 
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
 
@@ -614,14 +614,14 @@ if (cliente?.tomador) {
               onClick={() =>
                 polizaInputRef.current?.click()
               }
-              className={`min-h-[250px] rounded-xl border-2 border-dashed flex flex-col items-center justify-center text-center px-6 transition-all cursor-pointer ${
+              className={`min-h-[250px] rounded-2xl border-2 border-dashed flex flex-col items-center justify-center text-center px-6 transition-all cursor-pointer ${
                 dragActive
-                  ? "border-slate-700 bg-slate-100"
-                  : "border-slate-300 bg-slate-50 hover:border-slate-500 hover:bg-slate-100"
+                  ? "border-[#2f5bd3] bg-[#e3eafb]"
+                  : "border-[#b9c6ea] bg-[#f5f7fc] hover:border-[#2f5bd3] hover:bg-[#eef2fc]"
               }`}
             >
 
-              <div className="w-14 h-14 rounded-xl bg-slate-200 flex items-center justify-center mb-4">
+              <div className="w-14 h-14 rounded-2xl bg-[#e3eafb] flex items-center justify-center mb-4">
 
                 <svg
                   width="30"
@@ -632,7 +632,7 @@ if (cliente?.tomador) {
                   strokeWidth="1.8"
                   strokeLinecap="round"
                   strokeLinejoin="round"
-                  className="text-slate-700"
+                  className="text-[#2f5bd3]"
                 >
                   <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
                   <polyline points="14 2 14 8 20 8" />
@@ -682,7 +682,7 @@ if (cliente?.tomador) {
 
                   polizaInputRef.current?.click();
                 }}
-                className="mt-5 px-7 py-3 rounded-lg bg-slate-800 text-white font-semibold hover:bg-slate-700 disabled:opacity-50 cursor-pointer"
+                className="mt-5 px-7 py-3 rounded-xl bg-[#2f5bd3] text-white shadow-[0_10px_22px_-10px_rgba(47,91,211,0.7)] font-semibold hover:bg-[#2548b3] disabled:opacity-50 cursor-pointer"
               >
                 {analizandoPoliza
                   ? "Analizando documento..."
@@ -705,13 +705,13 @@ if (cliente?.tomador) {
                 RESULTADO
             ================================================= */}
 
-            <div className="rounded-xl border border-slate-200 bg-slate-50 p-5">
+            <div className="rounded-2xl border border-slate-200/70 bg-[#f5f7fc] p-5">
 
               {!polizaAnalizada ? (
 
                 <div className="h-full min-h-[220px] flex flex-col items-center justify-center text-center">
 
-                  <div className="w-12 h-12 rounded-full bg-slate-200 flex items-center justify-center mb-3">
+                  <div className="w-12 h-12 rounded-full bg-[#e3eafb] flex items-center justify-center mb-3">
 
                     <svg
                       width="24"
@@ -754,7 +754,7 @@ if (cliente?.tomador) {
                   </p>
 
                   {errorAnalisisPoliza && (
-                    <div className="mt-4 px-4 py-3 rounded-lg bg-slate-200 text-slate-700 text-sm font-medium">
+                    <div className="mt-4 px-4 py-3 rounded-xl border border-red-200 bg-red-50 text-red-700 text-sm font-medium">
                       {errorAnalisisPoliza}
                     </div>
                   )}
@@ -879,7 +879,7 @@ if (cliente?.tomador) {
           onSubmit={
             handleSubmit
           }
-          className="bg-white border border-slate-200 rounded-2xl shadow-sm overflow-hidden"
+          className="bg-white border border-slate-200/70 rounded-3xl shadow-[0_1px_2px_rgba(29,36,51,0.04),0_14px_34px_-20px_rgba(29,36,51,0.25)] overflow-hidden"
         >
 
           <div className="p-6 grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-5">
@@ -926,7 +926,7 @@ if (cliente?.tomador) {
                   }
                   className={`relative w-12 h-7 rounded-full transition-colors ${
                     ventaHistorica
-                      ? "bg-slate-800"
+                      ? "bg-[#2f5bd3]"
                       : "bg-slate-300"
                   }`}
                 >
@@ -1091,7 +1091,7 @@ if (cliente?.tomador) {
                 {buscandoCliente && (
                   <p className="text-xs text-slate-500 flex items-center gap-2">
 
-                    <span className="w-3 h-3 border-2 border-slate-300 border-t-slate-700 rounded-full animate-spin" />
+                    <span className="w-3 h-3 border-2 border-slate-300 border-t-[#2f5bd3] rounded-full animate-spin" />
 
                     Buscando cliente...
                   </p>
@@ -1331,9 +1331,9 @@ if (cliente?.tomador) {
 
             <Field label="Observaciones">
 
-              <div className="flex items-start border border-slate-300 rounded-lg bg-white overflow-hidden focus-within:border-slate-500">
+              <div className="flex items-start border border-slate-200 rounded-xl bg-white overflow-hidden transition focus-within:border-[#2f5bd3] focus-within:ring-4 focus-within:ring-[#2f5bd3]/15">
 
-                <div className="w-12 min-h-[76px] flex items-center justify-center border-r border-slate-200 text-slate-500 shrink-0">
+                <div className="w-12 min-h-[76px] flex items-center justify-center border-r border-slate-200 bg-[#f5f7fc] text-[#2f5bd3] shrink-0">
 
                   <svg
                     width="19"
@@ -1400,7 +1400,7 @@ if (cliente?.tomador) {
           {error && (
             <div className="px-6 pb-5">
 
-              <div className="bg-slate-100 border border-slate-300 text-slate-700 px-4 py-3 rounded-lg font-semibold">
+              <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-xl font-semibold">
                 {error}
               </div>
 
@@ -1411,14 +1411,14 @@ if (cliente?.tomador) {
               PIE
           ================================================= */}
 
-          <div className="border-t border-slate-200 bg-slate-50 px-6 py-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+          <div className="border-t border-slate-200/70 bg-[#f5f7fc] px-6 py-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
 
             <button
               type="button"
               onClick={
                 limpiarFormulario
               }
-              className="flex items-center justify-center gap-2 px-5 py-3 bg-white border border-slate-200 rounded-lg text-slate-700 font-semibold hover:bg-slate-100 cursor-pointer"
+              className="flex items-center justify-center gap-2 px-5 py-3 bg-white border border-slate-200 rounded-xl text-slate-700 font-semibold transition hover:bg-[#eef1fa] cursor-pointer"
             >
               <svg
                 width="18"
@@ -1443,7 +1443,7 @@ if (cliente?.tomador) {
                 showSuccess ||
                 analizandoPoliza
               }
-              className="flex items-center justify-center gap-2 px-8 py-3 rounded-lg bg-slate-800 text-white font-semibold hover:bg-slate-700 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+              className="flex items-center justify-center gap-2 px-8 py-3 rounded-xl bg-[#2f5bd3] text-white shadow-[0_10px_22px_-10px_rgba(47,91,211,0.7)] font-semibold hover:bg-[#2548b3] cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
             >
               <svg
                 width="19"
@@ -1473,9 +1473,9 @@ if (cliente?.tomador) {
       ===================================================== */}
 
       {showSuccess && (
-        <div className="fixed inset-0 bg-slate-900/40 flex items-center justify-center z-50 px-4">
+        <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm flex items-center justify-center z-50 px-4">
 
-          <div className="bg-white rounded-2xl p-7 w-full max-w-md shadow-xl">
+          <div className="bg-white rounded-3xl p-7 w-full max-w-md shadow-2xl">
 
             <div className="flex items-center gap-3 mb-3">
 
@@ -1520,7 +1520,7 @@ if (cliente?.tomador) {
                     "/crm/libro-ventas"
                   );
                 }}
-                className="px-6 py-2.5 bg-slate-800 text-white rounded-lg font-semibold hover:bg-slate-700"
+                className="px-6 py-2.5 bg-[#2f5bd3] text-white shadow-[0_10px_22px_-10px_rgba(47,91,211,0.7)] rounded-xl font-semibold hover:bg-[#2548b3]"
               >
                 OK
               </button>
@@ -1550,11 +1550,11 @@ const Field = ({
 }) => (
   <div className="flex flex-col gap-2">
 
-    <label className="text-sm font-semibold text-slate-700">
+    <label className="text-sm font-semibold tracking-tight text-slate-700">
       {label}
 
       {required && (
-        <span className="text-slate-500 ml-1">
+        <span className="text-[#2f5bd3] ml-1">
           *
         </span>
       )}
@@ -1576,9 +1576,9 @@ const InputWrapper = ({
   icon: string;
   children: React.ReactNode;
 }) => (
-  <div className="flex items-center border border-slate-300 rounded-lg bg-white overflow-hidden focus-within:border-slate-500 focus-within:ring-1 focus-within:ring-slate-200">
+  <div className="flex items-center border border-slate-200 rounded-xl bg-white overflow-hidden transition focus-within:border-[#2f5bd3] focus-within:ring-4 focus-within:ring-[#2f5bd3]/15">
 
-    <div className="w-12 h-11 flex items-center justify-center border-r border-slate-200 text-slate-500 shrink-0">
+    <div className="w-12 h-11 flex items-center justify-center border-r border-slate-200 bg-[#f5f7fc] text-[#2f5bd3] shrink-0">
       <FieldIcon type={icon} />
     </div>
 
@@ -1600,11 +1600,11 @@ const AnalisisDato = ({
   label: string;
   value?: string | number;
 }) => (
-  <div className="flex items-center justify-between gap-3 bg-white border border-slate-200 rounded-lg px-3 py-2.5">
+  <div className="flex items-center justify-between gap-3 bg-white border border-slate-200/70 rounded-xl px-3 py-2.5">
 
     <div className="flex items-center gap-2 min-w-0">
 
-      <span className="text-slate-500 shrink-0">
+      <span className="text-[#2f5bd3] shrink-0">
 
         <svg
           width="16"
