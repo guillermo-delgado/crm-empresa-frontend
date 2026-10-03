@@ -24,122 +24,114 @@ export default function ProtectedRoute({
   adminOnly = false,
 }: Props) {
   const token = localStorage.getItem("token");
-  const user = localStorage.getItem("user");
+  const rawUser = localStorage.getItem("user");
   const location = useLocation();
 
-  const [loading, setLoading] = useState(true);
-  const [enJornada, setEnJornada] = useState<boolean>(false);
+  let parsedUser: any = null;
+  try {
+    parsedUser = rawUser ? JSON.parse(rawUser) : null;
+  } catch {
+    parsedUser = null;
+  }
 
+  const esAdmin = parsedUser?.role === "admin";
+  const esEmpleado = parsedUser?.role === "empleado";
+  const esCrm = location.pathname.startsWith("/crm");
   const isMobile = isMobileDevice();
 
   /* ======================================================
-     🔒 BLOQUEO FRONTEND POR FIN DE JORNADA (SOCKET)
+     ⏱ JORNADA REAL (BACKEND) — SOLO EMPLEADOS DENTRO DEL CRM
+
+     Se comprueba CADA VEZ que el empleado entra en el CRM
+     (antes se comprobaba una sola vez al montar y se quedaba
+     con el resultado antiguo: si cargaba la página fuera de
+     jornada y luego fichaba, el CRM seguía bloqueado).
+
+     Los hooks van ANTES de cualquier return (reglas de React).
   ====================================================== */
-  const jornadaCerrada =
-    localStorage.getItem("jornada_cerrada") === "1";
+  const [chequeo, setChequeo] = useState<{ enJornada: boolean } | null>(null);
+
+  useEffect(() => {
+    // Fuera del CRM no hace falta comprobar nada; se limpia para
+    // forzar una comprobación nueva la próxima vez que entre.
+    if (!token || !esEmpleado || !esCrm) {
+      setChequeo(null);
+      return;
+    }
+
+    let vivo = true;
+
+    api
+      .get("/horario/hoy")
+      .then((res) => {
+        if (!vivo) return;
+
+        const dentro = res.data?.estado === "DENTRO";
+
+        // El backend manda: si está dentro de jornada, cualquier marca de
+        // "jornada cerrada" que quedara en el navegador está caducada.
+        if (dentro) localStorage.removeItem("jornada_cerrada");
+
+        setChequeo({ enJornada: dentro });
+      })
+      .catch(() => {
+        if (vivo) setChequeo({ enJornada: false });
+      });
+
+    return () => {
+      vivo = false;
+    };
+  }, [token, esEmpleado, esCrm]);
 
   /* ======================================================
      🔐 NO AUTENTICADO
   ====================================================== */
-  if (!token || !user) {
-    return <Navigate to="/login" replace />;
-  }
-
-  let parsedUser: any;
-  try {
-    parsedUser = JSON.parse(user);
-  } catch {
-    localStorage.clear();
+  if (!token || !rawUser || !parsedUser) {
+    if (rawUser && !parsedUser) localStorage.clear();
     return <Navigate to="/login" replace />;
   }
 
   /* ======================================================
      👑 ADMIN → NUNCA PASA POR LÓGICA LABORAL
   ====================================================== */
-  if (parsedUser.role === "admin") {
+  if (esAdmin) {
     // Si intenta entrar en laboral, lo mandamos al CRM
     if (location.pathname.startsWith("/laboral")) {
-      return (
-        <Navigate
-          to="/crm/libro-ventas"
-          replace
-        />
-      );
-    }
-
-    // Rutas solo admin
-    if (adminOnly && parsedUser.role !== "admin") {
-      return (
-        <Navigate
-          to="/crm/libro-ventas"
-          replace
-        />
-      );
+      return <Navigate to="/crm/libro-ventas" replace />;
     }
 
     return <>{children}</>;
   }
 
   /* ======================================================
-     👤 EMPLEADO → COMPROBAR JORNADA REAL (BACKEND)
-  ====================================================== */
-  useEffect(() => {
-    const checkHorario = async () => {
-      try {
-        const res = await api.get("/horario/hoy");
-        setEnJornada(res.data?.estado === "DENTRO");
-      } catch {
-        setEnJornada(false);
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    checkHorario();
-  }, []);
-
- if (loading) {
-  return (
-    <div className="min-h-screen flex items-center justify-center bg-slate-50">
-      <div className="w-32 h-[2px] bg-slate-300 rounded animate-pulse" />
-    </div>
-  );
-}
-
-
-  /* ======================================================
-     🚫 CORTAFUEGOS CRM (EMPLEADOS)
+     👤 EMPLEADO → CORTAFUEGOS CRM
      - MÓVIL / TABLET → SIEMPRE BLOQUEADO
-     - FUERA DE JORNADA → BLOQUEADO
-     - CIERRE POR SOCKET → BLOQUEADO
+     - FUERA DE JORNADA (o en pausa) → BLOQUEADO
   ====================================================== */
-  if (
-    parsedUser.role === "empleado" &&
-    location.pathname.startsWith("/crm") &&
-    (
-      isMobile ||          // 📱 móvil / tablet
-      jornadaCerrada ||    // 🔌 cierre forzado
-      !enJornada           // ⏱ fuera de jornada
-    )
-  ) {
-    return (
-      <Navigate
-        to="/laboral/control-horario"
-        replace
-      />
-    );
+  if (esEmpleado && esCrm) {
+    if (isMobile) {
+      return <Navigate to="/laboral/control-horario" replace />;
+    }
+
+    // Comprobando la jornada en el backend
+    if (chequeo === null) {
+      return (
+        <div className="min-h-screen flex items-center justify-center bg-slate-50">
+          <div className="w-32 h-[2px] bg-slate-300 rounded animate-pulse" />
+        </div>
+      );
+    }
+
+    if (!chequeo.enJornada) {
+      return <Navigate to="/laboral/control-horario" replace />;
+    }
   }
 
   /* ======================================================
      🔐 RUTAS SOLO ADMIN
   ====================================================== */
-  if (adminOnly && parsedUser.role !== "admin") {
-    return (
-      <Navigate
-        to="/laboral/control-horario"
-        replace
-      />
-    );
+  if (adminOnly && !esAdmin) {
+    return <Navigate to="/laboral/control-horario" replace />;
   }
 
   return <>{children}</>;

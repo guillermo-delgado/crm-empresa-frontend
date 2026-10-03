@@ -31,7 +31,9 @@ type Props = {
   ventasProduccionSemanal?: Venta[];
   kpis: any;
   isAdmin: boolean;
-  modoFecha: "efecto" | "venta";
+  // Se mantiene por compatibilidad con LibroVentas; los widgets de actividad y
+  // semanas usan SIEMPRE la fecha de venta registrada (createdAt).
+  modoFecha?: "efecto" | "venta";
   mes: number;
   anio: number;
   onSemanaClick?: (ventaIds: string[] | null) => void;
@@ -177,9 +179,14 @@ function MaximizablePanel({
           </h3>
 
           <div className="flex shrink-0 items-center gap-2">
+            {title === "Producción por semanas" && (
+              <span className="hidden whitespace-nowrap text-xs text-slate-400 sm:inline">
+                Ventas registradas
+              </span>
+            )}
             {title === "Actividad comercial diaria" && (
               <span className="hidden whitespace-nowrap text-xs text-slate-400 sm:inline">
-                Evolución mensual
+                Por fecha de venta
               </span>
             )}
             {title === "Producción por ramo" && (
@@ -773,6 +780,13 @@ function ProduccionSemanal({
       }
     );
 
+  // Límites del mes (claves YYYY-MM-DD): una semana que empieza en el mes
+  // anterior o termina en el siguiente solo cuenta los días del propio mes.
+  const inicioMesClave = `${anio}-${String(mes).padStart(2, "0")}-01`;
+  const finMesClave = `${anio}-${String(mes).padStart(2, "0")}-${String(
+    new Date(Date.UTC(anio, mes, 0)).getUTCDate()
+  ).padStart(2, "0")}`;
+
   return (
     <div
       className={
@@ -786,6 +800,11 @@ function ProduccionSemanal({
           const porcentaje =
             (semana.total / maximo) *
             100;
+
+          const cuentaDesde =
+            semana.inicio < inicioMesClave ? inicioMesClave : semana.inicio;
+          const cuentaHasta =
+            semana.fin > finMesClave ? finMesClave : semana.fin;
 
           return (
             <div
@@ -806,7 +825,10 @@ function ProduccionSemanal({
                     : "cursor-pointer"
                 }`}
               >
-                <div className="mb-1 truncate text-[11px] text-slate-600 group-hover:text-[#2f5bd3]">
+                <div
+                  className="mb-1 truncate text-[11px] text-slate-600 group-hover:text-[#2f5bd3]"
+                  title={`Cuenta del ${formatoFecha(cuentaDesde)} al ${formatoFecha(cuentaHasta)}`}
+                >
                   Semana {index + 1} (
                   {formatoFecha(semana.inicio)} - {formatoFecha(semana.fin)})
                 </div>
@@ -1078,13 +1100,11 @@ function ActividadComercialMaximizada({
 
 function VentasDiarias({
   ventas,
-  modoFecha,
   mes,
   anio,
   expanded = false,
 }: {
   ventas: Venta[];
-  modoFecha: "efecto" | "venta";
   mes: number;
   anio: number;
   expanded?: boolean;
@@ -1098,14 +1118,11 @@ function VentasDiarias({
     }));
 
     ventas.forEach((venta) => {
-  const valorFecha =
-    modoFecha === "venta"
-      ? venta.createdAt
-      : venta.fechaEfecto;
+      // Actividad comercial = SIEMPRE fecha de venta registrada (createdAt),
+      // nunca la fecha de efecto.
+      if (!venta.createdAt) return;
 
-  if (!valorFecha) return;
-
-  const fecha = new Date(valorFecha);
+      const fecha = new Date(venta.createdAt);
       if (Number.isNaN(fecha.getTime())) return;
 
       const partes = new Intl.DateTimeFormat("en-CA", {
@@ -1132,7 +1149,7 @@ function VentasDiarias({
     });
 
     return resultado;
-  }, [ventas, modoFecha, mes, anio]);
+  }, [ventas, mes, anio]);
 
   if (expanded) {
     return <ActividadComercialMaximizada datos={datos} />;
@@ -1247,7 +1264,6 @@ export default function DashboardKpis({
   ventasProduccionSemanal,
   kpis,
   isAdmin,
-  modoFecha,
   mes,
   anio,
   onSemanaClick,
@@ -1408,8 +1424,7 @@ export default function DashboardKpis({
         <MaximizablePanel title="Actividad comercial diaria">
           {(expanded) => (
             <VentasDiarias
-              ventas={ventas}
-              modoFecha={modoFecha}
+              ventas={ventasProduccionSemanal ?? ventas}
               mes={mes}
               anio={anio}
               expanded={expanded}

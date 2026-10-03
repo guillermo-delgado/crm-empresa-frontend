@@ -1,26 +1,25 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import type { ReactNode } from "react";
 import type { Dispatch, SetStateAction } from "react";
 
-import InfoModal from "../../components/common/InfoModal";
-import EditVentaModal from "../../components/ventas/EditVentaModal";
-import ConfirmModal from "../../components/common/ConfirmModal";
 import VentasGlobalSearch from "../../components/crm/VentasGlobalSearch";
 import VentasTableSkeleton from "../../components/crm/skeletons/VentasTableSkeleton";
 
 import VentasSearchSkeleton from "../../components/crm/skeletons/VentasSearchSkeleton";
 import { registerVentasSocketHandlers } from "../../services/ventasSocketHandlers";
 import api from "../../services/api";
-import { useNavigate, useOutletContext } from "react-router-dom";
+import { useOutletContext } from "react-router-dom";
 import {
   ChevronLeft, ChevronRight, Pencil, Ban, RotateCcw, Trash2, Eye, EyeOff, Search,
   BookOpen, Plus, FileSpreadsheet, FileText, Inbox, AlertTriangle, X,
+  ArrowUp, ArrowDown, ArrowUpDown, SlidersHorizontal, ChevronUp, ChevronDown,
 } from "lucide-react";
 import * as XLSX from "xlsx";
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
 import { getSocket } from "../../services/socket";
-import AnularVentaModal from "../../components/ventas/AnularVentaModal";
-import RehabilitarVentaModal from "../../components/ventas/RehabilitarVentaModal";
+// Formulario único de ventas (crear / editar). Ajusta la ruta si está en otra carpeta.
+import NuevaVenta from "./NuevaVenta";
 import DashboardKpis from "../crm/DashboardKpis";
 
 type VentaAPI = {
@@ -57,9 +56,13 @@ type VentaEditando = {
   fromSocket?: boolean;
 };
 
-type VentaAEliminar = VentaAPI & {
-  solicitudId?: string;
-};
+// Acción abierta sobre una venta (un único modal a la vez).
+type Accion =
+  | { modo: "editar"; venta: VentaEditando }
+  | { modo: "anular"; venta: any; solicitud?: any }
+  | { modo: "rehabilitar"; venta: any; solicitud?: any }
+  | { modo: "eliminar"; venta: VentaAPI }
+  | { modo: "crear" };
 
 type LayoutContext = {
   setRevisionCount: Dispatch<SetStateAction<number>>;
@@ -88,10 +91,34 @@ const ramoStyle = (r?: string) =>
 const iniciales = (s = "") =>
   s.trim().split(/\s+/).slice(0, 2).map((x) => x[0]).join("").toUpperCase() || "—";
 
+type ColKey = "venta" | "efecto" | "poliza" | "tomador" | "aseguradora" | "ramo" | "prima" | "usuario";
+
+const COL_LABELS: Record<ColKey, string> = {
+  venta: "Venta",
+  efecto: "Efecto",
+  poliza: "Póliza",
+  tomador: "Tomador",
+  aseguradora: "Aseguradora",
+  ramo: "Ramo",
+  prima: "Prima",
+  usuario: "Usuario",
+};
+
+const COL_DEFAULT_ORDER: ColKey[] = [
+  "venta",
+  "efecto",
+  "poliza",
+  "tomador",
+  "aseguradora",
+  "ramo",
+  "prima",
+  "usuario",
+];
+
+const isColKey = (x: unknown): x is ColKey => COL_DEFAULT_ORDER.includes(x as ColKey);
+
 export default function LibroVentas() {
   const { setRevisionCount } = useOutletContext<LayoutContext>();
-
-  const navigate = useNavigate();
 
   /* =========================
      USUARIO ACTUAL
@@ -128,8 +155,10 @@ export default function LibroVentas() {
 
   const [diaHasta, setDiaHasta] = useState<number | null>(null);
 
-  const [showPoliza, setShowPoliza] = useState(true);
-  const [showTomador, setShowTomador] = useState(true);
+  const [hiddenCols, setHiddenCols] = useState<ColKey[]>([]);
+  const [colOrder, setColOrder] = useState<ColKey[]>(COL_DEFAULT_ORDER);
+  const [sort, setSort] = useState<{ key: ColKey; dir: "asc" | "desc" } | null>(null);
+  const [showColMenu, setShowColMenu] = useState(false);
   const columnPrefsKey = `crm-libro-columnas-${currentUser?._id || currentUser?.id || currentUser?.email || currentUser?.role || "usuario"}`;
 
   useEffect(() => {
@@ -137,8 +166,22 @@ export default function LibroVentas() {
       const saved = localStorage.getItem(columnPrefsKey);
       if (!saved) return;
       const parsed = JSON.parse(saved);
-      if (typeof parsed.showPoliza === "boolean") setShowPoliza(parsed.showPoliza);
-      if (typeof parsed.showTomador === "boolean") setShowTomador(parsed.showTomador);
+
+      const hidden: ColKey[] = Array.isArray(parsed.hiddenCols) ? parsed.hiddenCols.filter(isColKey) : [];
+      // Migración de preferencias antiguas (solo póliza / tomador).
+      if (parsed.showPoliza === false && !hidden.includes("poliza")) hidden.push("poliza");
+      if (parsed.showTomador === false && !hidden.includes("tomador")) hidden.push("tomador");
+      setHiddenCols(hidden);
+
+      if (Array.isArray(parsed.colOrder)) {
+        const ok: ColKey[] = Array.from(new Set<ColKey>(parsed.colOrder.filter(isColKey)));
+        const missing = COL_DEFAULT_ORDER.filter((k) => !ok.includes(k));
+        setColOrder([...ok, ...missing]);
+      }
+
+      if (parsed.sort && isColKey(parsed.sort.key) && (parsed.sort.dir === "asc" || parsed.sort.dir === "desc")) {
+        setSort({ key: parsed.sort.key, dir: parsed.sort.dir });
+      }
     } catch {
       // Preferencias locales corruptas: se ignoran.
     }
@@ -146,11 +189,44 @@ export default function LibroVentas() {
 
   useEffect(() => {
     try {
-      localStorage.setItem(columnPrefsKey, JSON.stringify({ showPoliza, showTomador }));
+      localStorage.setItem(columnPrefsKey, JSON.stringify({ hiddenCols, colOrder, sort }));
     } catch {
       // localStorage no disponible.
     }
-  }, [columnPrefsKey, showPoliza, showTomador]);
+  }, [columnPrefsKey, hiddenCols, colOrder, sort]);
+
+  // Solo el admin ve la fecha de venta, ordena y reorganiza columnas.
+  const columnasVisibles = useMemo(
+    () =>
+      (isAdmin ? colOrder : COL_DEFAULT_ORDER).filter(
+        (k) => (isAdmin || k !== "venta") && !hiddenCols.includes(k)
+      ),
+    [isAdmin, colOrder, hiddenCols]
+  );
+
+  const toggleCol = (k: ColKey) =>
+    setHiddenCols((prev) => (prev.includes(k) ? prev.filter((x) => x !== k) : [...prev, k]));
+
+  const moverCol = (k: ColKey, delta: number) =>
+    setColOrder((prev) => {
+      const i = prev.indexOf(k);
+      const j = i + delta;
+      if (i < 0 || j < 0 || j >= prev.length) return prev;
+      const next = [...prev];
+      [next[i], next[j]] = [next[j], next[i]];
+      return next;
+    });
+
+  const restablecerCols = () => {
+    setColOrder(COL_DEFAULT_ORDER);
+    setHiddenCols([]);
+    setSort(null);
+  };
+
+  const clickSort = (k: ColKey) =>
+    setSort((prev) =>
+      !prev || prev.key !== k ? { key: k, dir: "asc" } : prev.dir === "asc" ? { key: k, dir: "desc" } : null
+    );
 
   // 📅 Límites de periodo (empleados)
   const hoy = new Date();
@@ -159,10 +235,6 @@ export default function LibroVentas() {
 
   const [showSolicitudesModal, setShowSolicitudesModal] = useState(false);
   const [solicitudes, setSolicitudes] = useState<any[]>([]);
-  const [solicitudSeleccionada, setSolicitudSeleccionada] = useState<any | null>(null);
-  const [ventaARehabilitar, setVentaARehabilitar] = useState<any | null>(null);
-
-  const [showDeleteInfo, setShowDeleteInfo] = useState(false);
   const solicitudesOrdenadas = useMemo(() => {
     return [...solicitudes].sort(
       (a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()
@@ -195,9 +267,9 @@ export default function LibroVentas() {
 
   const [loading, setLoading] = useState(false);
 
-  const [ventaEditando, setVentaEditando] = useState<VentaEditando | null>(null);
-  const [ventaAEliminar, setVentaAEliminar] = useState<VentaAEliminar | null>(null);
-  const [ventaAAnular, setVentaAAnular] = useState<VentaAPI | null>(null);
+  // Único estado para editar / eliminar / anular / rehabilitar.
+  const [accion, setAccion] = useState<Accion | null>(null);
+  const cerrarAccion = () => setAccion(null);
 
   const [aseguradora, setAseguradora] = useState("ALL");
   const [usuario, setUsuario] = useState("ALL");
@@ -251,8 +323,9 @@ export default function LibroVentas() {
     }
   };
 
-  const fetchLibroVentas = async () => {
-    setLoading(true);
+  // silencioso = true → refresco en segundo plano (sockets), sin parpadeo de skeleton.
+  const fetchLibroVentas = async (silencioso = false) => {
+    if (!silencioso) setLoading(true);
 
     try {
       const res = await api.get("/ventas/libro", {
@@ -271,7 +344,7 @@ export default function LibroVentas() {
     } catch (e) {
       console.error("Error cargando libro de ventas", e);
     } finally {
-      setLoading(false);
+      if (!silencioso) setLoading(false);
     }
   };
 
@@ -316,99 +389,126 @@ export default function LibroVentas() {
   }, [isAdmin]);
 
   // 3️⃣ Socket tiempo real
-  useEffect(() => {
-    const socket = getSocket();
-    if (!socket) return;
+  // Refresco en segundo plano con los filtros ACTUALES (la ref evita closures viejos)
+  // y con debounce, para agrupar varios eventos seguidos en una sola recarga.
+  const refrescarRef = useRef<() => void>(() => {});
+  const refrescoTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-    const cleanup = registerVentasSocketHandlers({
-      socket,
-      isAdmin,
-      setVentas,
-      setRevisionCount,
-      cargarSolicitudes,
-    });
+  refrescarRef.current = () => {
+    if (refrescoTimer.current) clearTimeout(refrescoTimer.current);
 
-    return cleanup;
-  }, [isAdmin]);
+    refrescoTimer.current = setTimeout(() => {
+      fetchLibroVentas(true);
+      fetchVentasProduccionSemanal();
 
-  useEffect(() => {
-    if (!solicitudSeleccionada) return;
-
-    const s = solicitudSeleccionada;
-
-    // 🟢 REHABILITAR LOCAL (desde tabla, no backend)
-    if (s.tipo === "REHABILITAR_VENTA" && s.local) {
-      // Garantiza que el modal tenga venta
-      if (!ventaARehabilitar && s.venta?._id) {
-        api.get(`/ventas/${s.venta._id}`).then((res) => {
-          setVentaARehabilitar(res.data);
-        });
+      if (search.trim().length >= 2) {
+        api
+          .get(`/ventas/buscar?q=${encodeURIComponent(search)}`)
+          .then((res) => setVentasBusqueda(res.data || []))
+          .catch(() => {});
       }
+    }, 400);
+  };
 
-      setShowSolicitudesModal(false);
-      return;
-    }
+  useEffect(() => {
+    let cleanup: (() => void) | undefined;
+    let reintento: ReturnType<typeof setInterval> | undefined;
 
-    const resolverSolicitud = async () => {
-      try {
-        // 🟢 EDITAR
-        if (s.tipo === "EDITAR_VENTA") {
-          const res = await api.get(`/ventas/${s.venta._id}`);
-          const original = res.data;
+    const registrar = () => {
+      const socket = getSocket();
+      if (!socket) return false;
 
-          setVentaEditando({
-            data: { ...original, ...s.payload },
-            original,
-            changedFields: Object.keys(s.payload || {}),
-            solicitudId: s._id,
-            fromSocket: true,
-          });
-        }
+      cleanup = registerVentasSocketHandlers({
+        socket,
+        isAdmin,
+        setVentas,
+        setRevisionCount,
+        cargarSolicitudes,
+        refrescar: () => refrescarRef.current(),
+      });
 
-        // 🔴 ELIMINAR
-        if (s.tipo === "ELIMINAR_VENTA") {
-          const res = await api.get(`/ventas/${s.venta._id}`);
-          const original = res.data;
-
-          setVentaEditando({
-            data: original,
-            original,
-            changedFields: ["__DELETE__"],
-            solicitudId: s._id,
-            fromSocket: true,
-          });
-        }
-
-        // 🔴 ANULAR
-        if (s.tipo === "ANULAR_VENTA") {
-          const res = await api.get(`/ventas/${s.venta._id}`);
-
-          setVentaAAnular({
-            ...res.data,
-            solicitudId: s._id,
-            payload: s.payload,
-            solicitadoPor: s.solicitadoPor,
-          });
-        }
-
-        // 🟢 REHABILITAR (SOLICITUD REAL desde backend)
-        if (s.tipo === "REHABILITAR_VENTA" && !s.local) {
-          const res = await api.get(`/ventas/${s.venta._id}`);
-
-          setVentaARehabilitar({
-            ...res.data,
-            solicitadoPor: s.solicitadoPor,
-          });
-        }
-
-        setShowSolicitudesModal(false);
-      } catch {
-        alert("Error abriendo la solicitud");
-      }
+      return true;
     };
 
-    resolverSolicitud();
-  }, [solicitudSeleccionada]);
+    // Si el socket aún no existe al montar la página, se reintenta hasta que esté.
+    if (!registrar()) {
+      reintento = setInterval(() => {
+        if (registrar() && reintento) clearInterval(reintento);
+      }, 500);
+    }
+
+    return () => {
+      if (reintento) clearInterval(reintento);
+      if (refrescoTimer.current) clearTimeout(refrescoTimer.current);
+      cleanup?.();
+    };
+  }, [isAdmin]);
+
+  // Abre la acción que corresponde a una solicitud pendiente (admin).
+  const abrirSolicitud = async (s: any) => {
+    setShowSolicitudesModal(false);
+
+    try {
+      const res = await api.get(`/ventas/${s.venta._id}`);
+      const original = res.data;
+
+      switch (s.tipo) {
+        case "EDITAR_VENTA":
+          setAccion({
+            modo: "editar",
+            venta: {
+              data: { ...original, ...s.payload },
+              original,
+              changedFields: Object.keys(s.payload || {}),
+              solicitudId: s._id,
+              fromSocket: true,
+            },
+          });
+          break;
+
+        case "ELIMINAR_VENTA":
+          setAccion({
+            modo: "editar",
+            venta: {
+              data: original,
+              original,
+              changedFields: ["__DELETE__"],
+              solicitudId: s._id,
+              fromSocket: true,
+            },
+          });
+          break;
+
+        case "ANULAR_VENTA":
+          setAccion({
+            modo: "anular",
+            venta: {
+              ...original,
+              solicitudId: s._id,
+              payload: s.payload,
+              solicitadoPor: s.solicitadoPor,
+            },
+            solicitud: s,
+          });
+          break;
+
+        case "REHABILITAR_VENTA":
+          setAccion({
+            modo: "rehabilitar",
+            venta: { ...original, solicitadoPor: s.solicitadoPor },
+            solicitud: s,
+          });
+          break;
+      }
+    } catch {
+      alert("Error abriendo la solicitud");
+    }
+  };
+
+  const refrescarLibro = () => {
+    fetchLibroVentas(true);
+    fetchVentasProduccionSemanal();
+  };
 
   /* =========================
      🔖 LABELS SOLICITUDES
@@ -543,19 +643,26 @@ export default function LibroVentas() {
       }
     }
     if (ventaInicial.fechaEfecto) ventaInicial.fechaEfecto = String(ventaInicial.fechaEfecto).slice(0, 10);
-    setVentaEditando({ data: ventaInicial, original, changedFields, solicitudId, fromSocket: false });
+    setAccion({
+      modo: "editar",
+      venta: { data: ventaInicial, original, changedFields, solicitudId, fromSocket: false },
+    });
   };
 
   const iniciarRehabilitacion = (v: VentaAPI) => {
     const original = ventas.find((item) => item._id === v._id);
     if (!original) return;
-    setVentaARehabilitar(original);
-    setSolicitudSeleccionada({
-      _id: original._id,
-      tipo: "REHABILITAR_VENTA",
-      estado: "PENDIENTE",
-      venta: { _id: original._id },
-      local: true,
+    // Admin desde la tabla: rehabilitación directa (solicitud "local").
+    setAccion({
+      modo: "rehabilitar",
+      venta: original,
+      solicitud: {
+        _id: original._id,
+        tipo: "REHABILITAR_VENTA",
+        estado: "PENDIENTE",
+        venta: { _id: original._id },
+        local: true,
+      },
     });
   };
 
@@ -642,6 +749,47 @@ export default function LibroVentas() {
     doc.save(`libro-ventas-${mesNombre(mes)}-${anio}.pdf`);
   };
 
+  const ventasOrdenadas = useMemo(() => {
+    const t = (d?: string) => (d ? new Date(d).getTime() : 0);
+    const porDefecto = (a: VentaAPI, b: VentaAPI) =>
+      t(b.createdAt || b.fechaEfecto) - t(a.createdAt || a.fechaEfecto);
+
+    const lista = [...ventasFiltradas];
+    if (!isAdmin || !sort) return lista.sort(porDefecto);
+
+    const valor = (v: VentaAPI): string | number => {
+      switch (sort.key) {
+        case "venta":
+          return t(v.createdAt);
+        case "efecto":
+          return t(v.fechaEfecto);
+        case "poliza":
+          return v.numeroPoliza || "";
+        case "tomador":
+          return v.tomador || "";
+        case "aseguradora":
+          return v.aseguradora || "";
+        case "ramo":
+          return v.ramo || "";
+        case "prima":
+          return Number(v.primaNeta || 0);
+        case "usuario":
+          return v.createdBy?.nombre || "";
+      }
+    };
+
+    const dir = sort.dir === "asc" ? 1 : -1;
+    return lista.sort((a, b) => {
+      const x = valor(a);
+      const y = valor(b);
+      const c =
+        typeof x === "number" && typeof y === "number"
+          ? x - y
+          : String(x).localeCompare(String(y), "es", { numeric: true, sensitivity: "base" });
+      return c !== 0 ? c * dir : porDefecto(a, b);
+    });
+  }, [ventasFiltradas, isAdmin, sort]);
+
   const hayFiltros = Boolean(
     search || aseguradora !== "ALL" || ramo !== "ALL" || usuario !== "ALL" || diaHasta !== null
   );
@@ -696,7 +844,7 @@ export default function LibroVentas() {
           {/* ACCIONES */}
           <div className="flex flex-wrap gap-2 lg:justify-end">
             <button
-              onClick={() => navigate("/crm/nueva-venta")}
+              onClick={() => setAccion({ modo: "crear" })}
               className="inline-flex h-10 items-center gap-2 rounded-xl bg-blue-600 px-4 text-sm font-semibold text-white shadow-md shadow-blue-600/20 transition hover:bg-blue-700 cursor-pointer"
             >
               <Plus size={16} /> Nueva venta
@@ -904,32 +1052,111 @@ export default function LibroVentas() {
               </p>
             </div>
 
-            <div className="flex flex-wrap items-center gap-2">
-              <div className="flex items-center gap-1 rounded-xl bg-slate-100 p-1">
-                <span className="px-2 text-[11px] font-semibold text-slate-400">Columnas</span>
-                <button
-                  type="button"
-                  onClick={() => setShowPoliza((v) => !v)}
-                  title={showPoliza ? "Ocultar póliza" : "Mostrar póliza"}
-                  className={`inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-semibold transition cursor-pointer ${
-                    showPoliza ? "bg-white text-slate-700 shadow-sm" : "text-slate-400 hover:text-slate-600"
-                  }`}
-                >
-                  {showPoliza ? <Eye size={13} /> : <EyeOff size={13} />}
-                  Póliza
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setShowTomador((v) => !v)}
-                  title={showTomador ? "Ocultar tomador" : "Mostrar tomador"}
-                  className={`inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-semibold transition cursor-pointer ${
-                    showTomador ? "bg-white text-slate-700 shadow-sm" : "text-slate-400 hover:text-slate-600"
-                  }`}
-                >
-                  {showTomador ? <Eye size={13} /> : <EyeOff size={13} />}
-                  Tomador
-                </button>
-              </div>
+            <div className="relative flex flex-wrap items-center gap-2">
+              {isAdmin ? (
+                <>
+                  {sort && (
+                    <button
+                      type="button"
+                      onClick={() => setSort(null)}
+                      className="inline-flex h-9 items-center gap-1.5 rounded-xl bg-slate-100 px-3 text-xs font-semibold text-slate-600 transition hover:bg-slate-200 cursor-pointer"
+                    >
+                      <X size={13} /> Quitar orden
+                    </button>
+                  )}
+
+                  <button
+                    type="button"
+                    onClick={() => setShowColMenu((v) => !v)}
+                    className="inline-flex h-9 items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3 text-xs font-semibold text-slate-700 shadow-sm transition hover:bg-slate-50 cursor-pointer"
+                  >
+                    <SlidersHorizontal size={14} /> Columnas
+                  </button>
+
+                  {showColMenu && (
+                    <>
+                      <div className="fixed inset-0 z-30" onClick={() => setShowColMenu(false)} />
+                      <div className="absolute right-0 top-11 z-40 w-72 rounded-2xl border border-slate-200 bg-white p-2 shadow-xl">
+                        <p className="px-2 pb-1 pt-1.5 text-[11px] font-semibold text-slate-400">
+                          Mostrar y ordenar columnas
+                        </p>
+
+                        {colOrder.map((k, i) => {
+                          const oculta = hiddenCols.includes(k);
+                          return (
+                            <div key={k} className="flex items-center gap-1 rounded-lg px-2 py-1.5 hover:bg-slate-50">
+                              <button
+                                type="button"
+                                onClick={() => toggleCol(k)}
+                                title={oculta ? "Mostrar columna" : "Ocultar columna"}
+                                className={`flex h-7 w-7 items-center justify-center rounded-lg transition cursor-pointer ${
+                                  oculta ? "text-slate-300 hover:text-slate-500" : "text-blue-600 hover:bg-blue-50"
+                                }`}
+                              >
+                                {oculta ? <EyeOff size={15} /> : <Eye size={15} />}
+                              </button>
+
+                              <span className={`flex-1 text-sm ${oculta ? "text-slate-400" : "font-medium text-slate-700"}`}>
+                                {COL_LABELS[k]}
+                              </span>
+
+                              <button
+                                type="button"
+                                disabled={i === 0}
+                                onClick={() => moverCol(k, -1)}
+                                title="Mover a la izquierda"
+                                className="flex h-7 w-7 items-center justify-center rounded-lg text-slate-500 transition hover:bg-slate-100 disabled:opacity-25 disabled:hover:bg-transparent cursor-pointer disabled:cursor-not-allowed"
+                              >
+                                <ChevronUp size={15} />
+                              </button>
+                              <button
+                                type="button"
+                                disabled={i === colOrder.length - 1}
+                                onClick={() => moverCol(k, 1)}
+                                title="Mover a la derecha"
+                                className="flex h-7 w-7 items-center justify-center rounded-lg text-slate-500 transition hover:bg-slate-100 disabled:opacity-25 disabled:hover:bg-transparent cursor-pointer disabled:cursor-not-allowed"
+                              >
+                                <ChevronDown size={15} />
+                              </button>
+                            </div>
+                          );
+                        })}
+
+                        <div className="mt-1 border-t border-slate-100 pt-2">
+                          <button
+                            type="button"
+                            onClick={restablecerCols}
+                            className="w-full rounded-lg px-2 py-1.5 text-left text-xs font-semibold text-slate-500 transition hover:bg-slate-50 hover:text-slate-800 cursor-pointer"
+                          >
+                            Restablecer columnas y orden
+                          </button>
+                        </div>
+                      </div>
+                    </>
+                  )}
+                </>
+              ) : (
+                <div className="flex items-center gap-1 rounded-xl bg-slate-100 p-1">
+                  <span className="px-2 text-[11px] font-semibold text-slate-400">Columnas</span>
+                  {(["poliza", "tomador"] as ColKey[]).map((k) => {
+                    const visible = !hiddenCols.includes(k);
+                    return (
+                      <button
+                        key={k}
+                        type="button"
+                        onClick={() => toggleCol(k)}
+                        title={visible ? `Ocultar ${COL_LABELS[k].toLowerCase()}` : `Mostrar ${COL_LABELS[k].toLowerCase()}`}
+                        className={`inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-semibold transition cursor-pointer ${
+                          visible ? "bg-white text-slate-700 shadow-sm" : "text-slate-400 hover:text-slate-600"
+                        }`}
+                      >
+                        {visible ? <Eye size={13} /> : <EyeOff size={13} />}
+                        {COL_LABELS[k]}
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
             </div>
           </div>
 
@@ -943,117 +1170,166 @@ export default function LibroVentas() {
             </div>
           ) : (
             <div className="overflow-x-auto">
-              <table className="w-full min-w-[1050px] border-collapse text-sm">
+              <table className="w-full min-w-[1050px] border-collapse text-sm lg:min-w-0">
                 <thead>
                   <tr className="bg-slate-50 text-left text-xs font-semibold text-slate-500">
-                    <th className="whitespace-nowrap border-b border-slate-100 px-6 py-3.5">Venta</th>
-                    <th className="whitespace-nowrap border-b border-slate-100 px-4 py-3.5">Efecto</th>
-                    {showPoliza && <th className="whitespace-nowrap border-b border-slate-100 px-4 py-3.5">Póliza</th>}
-                    {showTomador && <th className="min-w-[220px] border-b border-slate-100 px-4 py-3.5">Tomador</th>}
-                    <th className="whitespace-nowrap border-b border-slate-100 px-4 py-3.5">Aseguradora</th>
-                    <th className="whitespace-nowrap border-b border-slate-100 px-4 py-3.5">Ramo</th>
-                    <th className="whitespace-nowrap border-b border-slate-100 px-4 py-3.5 text-right">Prima</th>
-                    <th className="whitespace-nowrap border-b border-slate-100 px-4 py-3.5">Usuario</th>
-                    <th className="whitespace-nowrap border-b border-slate-100 px-6 py-3.5 text-right">Acciones</th>
+                    {columnasVisibles.map((k, i) => {
+                      const activo = isAdmin && sort?.key === k;
+                      return (
+                        <th
+                          key={k}
+                          className={`whitespace-nowrap border-b border-slate-100 px-3 py-3.5 xl:px-4 ${
+                            i === 0 ? "pl-4 xl:pl-6" : ""
+                          } ${k === "prima" ? "text-right" : ""} ${k === "tomador" ? "w-full" : ""}`}
+                        >
+                          {isAdmin ? (
+                            <button
+                              type="button"
+                              onClick={() => clickSort(k)}
+                              title="Ordenar por esta columna"
+                              className={`inline-flex items-center gap-1 font-semibold transition hover:text-slate-800 cursor-pointer ${
+                                k === "prima" ? "flex-row-reverse" : ""
+                              } ${activo ? "text-blue-700" : ""}`}
+                            >
+                              {COL_LABELS[k]}
+                              {activo ? (
+                                sort!.dir === "asc" ? <ArrowUp size={12} /> : <ArrowDown size={12} />
+                              ) : (
+                                <ArrowUpDown size={12} className="opacity-40" />
+                              )}
+                            </button>
+                          ) : (
+                            COL_LABELS[k]
+                          )}
+                        </th>
+                      );
+                    })}
+                    <th className="whitespace-nowrap border-b border-slate-100 px-4 py-3.5 text-right xl:px-6">Acciones</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
-                  {[...ventasFiltradas]
-                    .sort((a, b) => {
-                      const da = new Date(a.createdAt || a.fechaEfecto || 0).getTime();
-                      const db = new Date(b.createdAt || b.fechaEfecto || 0).getTime();
-                      return db - da;
-                    })
-                    .map((v) => {
-                      const anulada = Boolean((v as any).anulada || (v as any).estado === "ANULADA");
-                      const pendienteRevision = v.estadoRevision === "pendiente";
-                      const rs = ramoStyle(v.ramo);
-                      return (
-                        <tr
-                          key={v._id}
-                          className={`group transition-colors hover:bg-blue-50/40 ${anulada ? "bg-slate-50/80" : "bg-white"}`}
-                        >
-                          <td className="whitespace-nowrap px-6 py-4 text-slate-700">
-                            <div className="font-semibold text-slate-800">
-                              {v.createdAt ? new Date(v.createdAt).toLocaleDateString("es-ES") : "-"}
+                  {ventasOrdenadas.map((v) => {
+                    const anulada = Boolean((v as any).anulada || (v as any).estado === "ANULADA");
+                    const pendienteRevision = v.estadoRevision === "pendiente";
+                    const rs = ramoStyle(v.ramo);
+
+                    const celdas: Record<ColKey, { cls: string; node: ReactNode }> = {
+                      venta: {
+                        cls: "whitespace-nowrap px-3 py-4 text-slate-700 xl:px-4",
+                        node: (
+                          <div className="font-semibold text-slate-800">
+                            {v.createdAt ? new Date(v.createdAt).toLocaleDateString("es-ES") : "-"}
+                          </div>
+                        ),
+                      },
+                      efecto: {
+                        cls: "whitespace-nowrap px-3 py-4 text-slate-600 xl:px-4",
+                        node: v.fechaEfecto ? new Date(v.fechaEfecto).toLocaleDateString("es-ES") : "-",
+                      },
+                      poliza: {
+                        cls: "whitespace-nowrap px-3 py-4 xl:px-4",
+                        node: (
+                          <div className="flex flex-col items-start gap-1">
+                            <span className={`font-semibold ${anulada ? "text-slate-400 line-through" : "text-slate-800"}`}>
+                              {v.numeroPoliza || "-"}
+                            </span>
+                            {anulada && (
+                              <span className="rounded-full bg-slate-200 px-2 py-0.5 text-[10px] font-bold text-slate-600">
+                                Anulada
+                              </span>
+                            )}
+                          </div>
+                        ),
+                      },
+                      tomador: {
+                        cls: "w-full max-w-0 px-3 py-4 xl:px-4",
+                        node: (
+                          <div className="flex min-w-[150px] items-center gap-3">
+                            <span
+                              className="hidden h-9 w-9 shrink-0 items-center justify-center rounded-full text-xs font-bold xl:flex"
+                              style={{ background: rs.bg, color: rs.fg }}
+                            >
+                              {iniciales(v.tomador)}
+                            </span>
+                            <div
+                              className={`truncate font-semibold ${anulada ? "text-slate-400" : "text-slate-800"}`}
+                              title={v.tomador}
+                            >
+                              {v.tomador || "-"}
                             </div>
-                            {pendienteRevision && (
-                              <button
-                                type="button"
-                                onClick={() => marcarRevisionLeida(v)}
-                                className="mt-1 inline-flex items-center gap-1 rounded-full bg-blue-50 px-2 py-0.5 text-[10px] font-semibold text-blue-700 transition hover:bg-blue-100 cursor-pointer"
-                                title="Marcar revisión como leída"
-                              >
-                                <span className="h-1.5 w-1.5 rounded-full bg-blue-500" /> Revisión pendiente
-                              </button>
-                            )}
-                          </td>
-                          <td className="whitespace-nowrap px-4 py-4 text-slate-600">
-                            {v.fechaEfecto ? new Date(v.fechaEfecto).toLocaleDateString("es-ES") : "-"}
-                          </td>
-                          {showPoliza && (
-                            <td className="whitespace-nowrap px-4 py-4">
-                              <span className={`font-semibold ${anulada ? "text-slate-400 line-through" : "text-slate-800"}`}>
-                                {v.numeroPoliza || "-"}
-                              </span>
-                              {anulada && (
-                                <span className="ml-2 rounded-full bg-slate-200 px-2 py-0.5 text-[10px] font-bold text-slate-600">
-                                  Anulada
-                                </span>
-                              )}
-                            </td>
-                          )}
-                          {showTomador && (
-                            <td className="max-w-[300px] px-4 py-4">
-                              <div className="flex items-center gap-3">
-                                <span
-                                  className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-xs font-bold"
-                                  style={{ background: rs.bg, color: rs.fg }}
-                                >
-                                  {iniciales(v.tomador)}
-                                </span>
-                                <div
-                                  className={`truncate font-semibold ${anulada ? "text-slate-400" : "text-slate-800"}`}
-                                  title={v.tomador}
-                                >
-                                  {v.tomador || "-"}
-                                </div>
-                              </div>
-                            </td>
-                          )}
-                          <td className="whitespace-nowrap px-4 py-4 text-slate-700">{v.aseguradora || "-"}</td>
-                          <td className="whitespace-nowrap px-4 py-4">
-                            {v.ramo ? (
-                              <span
-                                className="rounded-full px-2.5 py-1 text-xs font-bold"
-                                style={{ background: rs.bg, color: rs.fg }}
-                              >
-                                {v.ramo}
-                              </span>
-                            ) : (
-                              "-"
-                            )}
-                          </td>
-                          <td
-                            className={`whitespace-nowrap px-4 py-4 text-right font-bold tabular-nums ${
-                              anulada ? "text-slate-400 line-through" : "text-slate-900"
-                            }`}
+                          </div>
+                        ),
+                      },
+                      aseguradora: {
+                        cls: "whitespace-nowrap px-3 py-4 text-slate-700 xl:px-4",
+                        node: v.aseguradora || "-",
+                      },
+                      ramo: {
+                        cls: "px-3 py-4 xl:px-4",
+                        node: v.ramo ? (
+                          <span
+                            className="inline-block max-w-[150px] rounded-full px-2.5 py-1 text-xs font-bold leading-tight"
+                            style={{ background: rs.bg, color: rs.fg }}
                           >
+                            {v.ramo}
+                          </span>
+                        ) : (
+                          "-"
+                        ),
+                      },
+                      prima: {
+                        cls: `whitespace-nowrap px-3 py-4 text-right font-bold tabular-nums xl:px-4 ${
+                          anulada ? "text-slate-400 line-through" : "text-slate-900"
+                        }`,
+                        node: (
+                          <>
                             {Number(v.primaNeta || 0).toLocaleString("es-ES", {
                               minimumFractionDigits: 2,
                               maximumFractionDigits: 2,
                             })}{" "}
                             €
-                          </td>
-                          <td className="whitespace-nowrap px-4 py-4">
-                            <span className="inline-flex max-w-[160px] items-center gap-2 truncate rounded-full bg-slate-100 py-1 pl-1 pr-3 text-xs font-medium text-slate-600">
-                              <span className="flex h-6 w-6 items-center justify-center rounded-full bg-white text-[10px] font-bold text-slate-500">
-                                {iniciales(v.createdBy?.nombre)}
-                              </span>
+                          </>
+                        ),
+                      },
+                      usuario: {
+                        cls: "whitespace-nowrap px-3 py-4 xl:px-4",
+                        node: (
+                          <span className="inline-flex max-w-[150px] items-center gap-2 rounded-full bg-slate-100 py-1 pl-1 pr-3 text-xs font-medium text-slate-600">
+                            <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-white text-[10px] font-bold text-slate-500">
+                              {iniciales(v.createdBy?.nombre)}
+                            </span>
+                            <span className="truncate" title={v.createdBy?.nombre}>
                               {v.createdBy?.nombre || "-"}
                             </span>
+                          </span>
+                        ),
+                      },
+                    };
+
+                    return (
+                      <tr
+                        key={v._id}
+                        className={`group transition-colors hover:bg-blue-50/40 ${anulada ? "bg-slate-50/80" : "bg-white"}`}
+                      >
+                        {columnasVisibles.map((k, i) => (
+                          <td key={k} className={`${celdas[k].cls} ${i === 0 ? "pl-4 xl:pl-6" : ""}`}>
+                            {celdas[k].node}
                           </td>
-                          <td className="whitespace-nowrap px-6 py-4">
+                        ))}
+
+                        <td className="whitespace-nowrap px-4 py-4 xl:px-6">
+                          <div className="flex flex-col items-end gap-1.5">
+                            {pendienteRevision && (
+                              <button
+                                type="button"
+                                onClick={() => marcarRevisionLeida(v)}
+                                className="inline-flex items-center gap-1 rounded-full bg-blue-50 px-2 py-0.5 text-[10px] font-semibold text-blue-700 transition hover:bg-blue-100 cursor-pointer"
+                                title="Marcar revisión como leída"
+                              >
+                                <span className="h-1.5 w-1.5 rounded-full bg-blue-500" /> Revisión pendiente
+                              </button>
+                            )}
+
                             <div className="flex justify-end gap-1.5 opacity-80 transition group-hover:opacity-100">
                               <button
                                 type="button"
@@ -1079,7 +1355,7 @@ export default function LibroVentas() {
                                   type="button"
                                   onClick={() => {
                                     const original = ventas.find((item) => item._id === v._id);
-                                    if (original) setVentaAAnular(original);
+                                    if (original) setAccion({ modo: "anular", venta: original });
                                   }}
                                   className="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-amber-200 bg-amber-50 text-amber-700 transition hover:bg-amber-100 cursor-pointer"
                                   title="Anular venta"
@@ -1092,7 +1368,7 @@ export default function LibroVentas() {
                                 type="button"
                                 onClick={() => {
                                   const original = ventas.find((item) => item._id === v._id);
-                                  if (original) setVentaAEliminar(original);
+                                  if (original) setAccion({ modo: "eliminar", venta: original });
                                 }}
                                 className="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-400 transition hover:border-red-200 hover:bg-red-50 hover:text-red-600 cursor-pointer"
                                 title={isAdmin ? "Eliminar venta" : "Solicitar eliminación"}
@@ -1101,10 +1377,11 @@ export default function LibroVentas() {
                                 <Trash2 size={15} />
                               </button>
                             </div>
-                          </td>
-                        </tr>
-                      );
-                    })}
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
             </div>
@@ -1143,10 +1420,7 @@ export default function LibroVentas() {
                 <div
                   key={s._id}
                   className="flex cursor-pointer items-center gap-3 rounded-xl border border-slate-200 p-3 transition hover:border-blue-200 hover:bg-blue-50/50"
-                  onClick={() => {
-                    setShowSolicitudesModal(false); // 👈 CIERRA PRIMERO
-                    setSolicitudSeleccionada(s); // 👈 LUEGO RESUELVE
-                  }}
+                  onClick={() => abrirSolicitud(s)}
                 >
                   <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-slate-100 text-xs font-bold text-slate-600">
                     {iniciales(s.venta?.tomador)}
@@ -1178,15 +1452,14 @@ export default function LibroVentas() {
         </div>
       )}
 
-      {/* MODALES */}
-      {ventaEditando && (
-        <EditVentaModal
-          venta={ventaEditando}
-          onClose={() => setVentaEditando(null)}
-          onSaved={(patch?: {
-            _id: string;
-            estadoRevision?: "pendiente" | "aceptada" | "rechazada" | null;
-          }) => {
+      {/* MODALES DE ACCIONES SOBRE UNA VENTA (un único estado: accion) */}
+      {accion?.modo === "editar" && (
+        <NuevaVenta
+          modal
+          modo="editar"
+          venta={accion.venta}
+          onClose={cerrarAccion}
+          onSaved={(patch) => {
             if (patch?._id) {
               setVentas((prev) =>
                 prev.map((v) =>
@@ -1201,74 +1474,59 @@ export default function LibroVentas() {
               );
             }
 
-            setVentaEditando(null);
+            setAccion(null);
+            refrescarLibro();
           }}
         />
       )}
 
-      {ventaAEliminar && (
-        <ConfirmModal
-          title="Eliminar venta"
-          description={`¿Eliminar la póliza ${ventaAEliminar.numeroPoliza}?`}
-          onCancel={() => setVentaAEliminar(null)}
-          onConfirm={async () => {
-            try {
-              await api.delete(`/ventas/${ventaAEliminar._id}`);
-
-              setVentas((prev) => prev.filter((v) => v._id !== ventaAEliminar._id));
-
-              setVentaAEliminar(null);
-            } catch (error: any) {
-              // EMPLEADO → solicitud de eliminación
-              if (error.response?.status === 403) {
-                setVentaAEliminar(null);
-                setShowDeleteInfo(true);
-                return;
-              }
-
-              // Cualquier otro error → mostrar mensaje real del backend
-              alert(error.response?.data?.message || "Se ha producido un error al eliminar la venta.");
+      {accion?.modo === "eliminar" && (
+        <NuevaVenta
+          modal
+          modo="eliminar"
+          venta={accion.venta}
+          onClose={cerrarAccion}
+          onSaved={(patch) => {
+            // Borrado real → fuera de la tabla al instante; si fue solicitud solo se refresca.
+            if (patch?.eliminada) {
+              const id = patch._id;
+              setVentas((prev) => prev.filter((v) => v._id !== id));
             }
+            refrescarLibro();
           }}
         />
       )}
 
-      {ventaAAnular && (
-        <AnularVentaModal
-          venta={ventaAAnular}
-          solicitud={solicitudSeleccionada}
-          onClose={() => setVentaAAnular(null)}
-          onConfirm={() => {
-            setVentaAAnular(null);
-            fetchLibroVentas();
+      {accion?.modo === "anular" && (
+        <NuevaVenta
+          modal
+          modo="anular"
+          venta={accion.venta}
+          solicitud={accion.solicitud}
+          onClose={cerrarAccion}
+          onSaved={() => {
+            setAccion(null);
+            refrescarLibro();
           }}
         />
       )}
 
-      {ventaARehabilitar && (
-        <RehabilitarVentaModal
-          venta={ventaARehabilitar}
-          solicitud={solicitudSeleccionada}
-          onClose={() => {
-            setVentaARehabilitar(null);
-            setSolicitudSeleccionada(null);
-          }}
-          onConfirm={() => {
-            setVentaARehabilitar(null);
-            setSolicitudSeleccionada(null);
-            fetchLibroVentas();
+      {accion?.modo === "rehabilitar" && (
+        <NuevaVenta
+          modal
+          modo="rehabilitar"
+          venta={accion.venta}
+          solicitud={accion.solicitud}
+          onClose={cerrarAccion}
+          onSaved={() => {
+            setAccion(null);
+            refrescarLibro();
           }}
         />
       )}
 
-      {showDeleteInfo && (
-        <InfoModal
-          type="delete"
-          onClose={() => {
-            setShowDeleteInfo(false);
-            fetchLibroVentas();
-          }}
-        />
+      {accion?.modo === "crear" && (
+        <NuevaVenta modal onClose={cerrarAccion} onSaved={() => refrescarLibro()} />
       )}
     </div>
   );
