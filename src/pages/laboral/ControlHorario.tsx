@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import {
   AlertCircle,
+  Check,
   Loader2,
   LogIn,
   LogOut,
@@ -335,6 +336,7 @@ export default function ControlHorario() {
     timeZone: ZONA_ES,
     hour: "2-digit",
     minute: "2-digit",
+    second: "2-digit",
   });
 
   const fechaTexto = horaActual.toLocaleDateString("es-ES", {
@@ -360,8 +362,13 @@ export default function ControlHorario() {
   const LONGITUD = 2 * Math.PI * RADIO;
 
   /* Cuenta de la pausa en curso */
+  const hayFichajes = (registro.fichajes ?? []).length > 0;
   let textoCentro = horaTexto;
-  let subCentro = "Hora actual · España";
+  let subCentro = enJornada
+    ? "Has fichado entrada"
+    : hayFichajes
+    ? "Has fichado salida"
+    : "Aún no has fichado";
 
   if (enPausa && registro.pausa && esHoraValida(registro.pausa.desde)) {
     const min = Math.max(
@@ -377,39 +384,34 @@ export default function ControlHorario() {
   }
 
   const linea = construirLinea(registro);
-  const colorAnillo = enPausa ? "#f59e0b" : "#2f5bd3";
+  const mostrarCheck = enJornada || (!enPausa && hayFichajes);
+  const nombrePila = (registro.nombre || "").trim().split(/\s+/)[0];
+  const iniciales =
+    (registro.nombre || "")
+      .trim()
+      .split(/\s+/)
+      .slice(0, 2)
+      .map((p) => p[0]?.toUpperCase() ?? "")
+      .join("") || "·";
 
   return (
     <div className="flex justify-center px-1 pb-4 pt-6">
       <div className="flex min-h-[calc(100dvh-8rem)] w-full max-w-md flex-col gap-4">
         {/* CABECERA */}
-        <div className="flex items-start justify-between gap-3">
+        <div className="flex items-center justify-between gap-3">
           <div>
-            <h1 className="text-2xl font-bold tracking-tight text-slate-900">
-              Control horario
+            <h1 className="text-[1.65rem] font-bold tracking-tight text-slate-900">
+              ¡Hola{nombrePila ? `, ${nombrePila}` : ""}!{" "}
+              <span aria-hidden="true">👋</span>
             </h1>
             <p className="text-sm text-slate-500">{fechaLarga}</p>
           </div>
 
           <span
-            className={`mt-1 inline-flex items-center gap-2 rounded-full px-3.5 py-1.5 text-sm font-semibold ${
-              enJornada
-                ? "bg-emerald-100 text-emerald-700"
-                : enPausa
-                ? "bg-amber-100 text-amber-700"
-                : "bg-white text-slate-500 ring-1 ring-slate-200"
-            }`}
+            aria-hidden="true"
+            className="grid h-12 w-12 shrink-0 place-items-center rounded-full bg-[#d5ddf0] text-sm font-bold text-[#2f5bd3] ring-2 ring-white"
           >
-            {(enJornada || enPausa) && (
-              <span
-                className={`h-2.5 w-2.5 rounded-full ${
-                  enJornada
-                    ? "animate-pulse bg-emerald-500"
-                    : "animate-pulse bg-amber-500"
-                }`}
-              />
-            )}
-            {enJornada ? "En jornada" : enPausa ? "En pausa" : "Fuera"}
+            {iniciales}
           </span>
         </div>
 
@@ -424,13 +426,31 @@ export default function ControlHorario() {
 
         {/* ANILLO + TIEMPO TRABAJADO */}
         <div className="rounded-[2rem] bg-white px-5 pb-5 pt-7 text-center shadow-[0_22px_40px_-28px_rgba(29,36,51,0.4)]">
-          <div className="relative mx-auto h-[236px] w-[236px]">
+          <div
+            className={`relative mx-auto h-[236px] w-[236px] rounded-full ${
+              enPausa
+                ? "shadow-[0_0_60px_-14px_rgba(245,158,11,0.45)]"
+                : "shadow-[0_0_60px_-14px_rgba(99,102,241,0.4)]"
+            }`}
+          >
             <svg
               width="236"
               height="236"
               className="-rotate-90"
               aria-hidden="true"
             >
+              <defs>
+                <linearGradient id="anillo-grad" x1="0" y1="0" x2="1" y2="1">
+                  <stop
+                    offset="0%"
+                    stopColor={enPausa ? "#fbbf24" : "#2f5bd3"}
+                  />
+                  <stop
+                    offset="100%"
+                    stopColor={enPausa ? "#f59e0b" : "#8b5cf6"}
+                  />
+                </linearGradient>
+              </defs>
               <circle
                 cx="118"
                 cy="118"
@@ -444,7 +464,7 @@ export default function ControlHorario() {
                 cy="118"
                 r={RADIO}
                 fill="none"
-                stroke={colorAnillo}
+                stroke="url(#anillo-grad)"
                 strokeWidth="14"
                 strokeLinecap="round"
                 strokeDasharray={`${LONGITUD * progreso} ${LONGITUD}`}
@@ -453,14 +473,54 @@ export default function ControlHorario() {
             </svg>
 
             <div className="absolute inset-0 flex flex-col items-center justify-center">
-              <span className="text-[3.5rem] font-bold leading-none tabular-nums tracking-tight text-slate-900">
+              <span className="mb-2 inline-flex items-center gap-1.5 text-xs font-medium text-slate-500">
+                <span
+                  className={`h-2 w-2 rounded-full ${
+                    enJornada
+                      ? "animate-pulse bg-emerald-500"
+                      : enPausa
+                      ? "animate-pulse bg-amber-500"
+                      : "bg-slate-300"
+                  }`}
+                />
+                {enJornada
+                  ? "En jornada"
+                  : enPausa
+                  ? "En pausa"
+                  : "Fuera de jornada"}
+              </span>
+
+              <span
+                className={`font-bold leading-none tabular-nums tracking-tight text-slate-900 ${
+                  enPausa ? "text-[3.5rem]" : "text-[2.7rem]"
+                }`}
+              >
                 {textoCentro}
               </span>
-              <span className="mt-1.5 text-[13px] text-slate-500">
+              <span className="mt-2 text-[13px] text-slate-500">
                 {subCentro}
               </span>
+
+              {mostrarCheck && (
+                <span className="mt-2 grid h-6 w-6 place-items-center rounded-full bg-emerald-500 text-white">
+                  <Check size={14} strokeWidth={3} />
+                </span>
+              )}
             </div>
           </div>
+
+          {/* PAUSA: solo aparece cuando ya ha fichado la entrada */}
+          {enJornada && !errorCarga && (
+            <button
+              type="button"
+              onClick={abrirHoja}
+              disabled={fichando}
+              className="mx-auto mt-4 inline-flex cursor-pointer items-center gap-2 rounded-full bg-amber-50 px-5 py-2.5 text-sm font-semibold text-amber-700 ring-1 ring-amber-200 transition hover:bg-amber-100 active:scale-[0.97] disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              <Pause size={16} />
+              Pausa
+            </button>
+          )}
 
           {errorCarga ? (
             <div className="mt-4 space-y-3">
@@ -536,18 +596,6 @@ export default function ControlHorario() {
 
         {/* BOTONES */}
         <div className="mt-auto flex gap-3 pt-2">
-          {enJornada && (
-            <button
-              type="button"
-              onClick={abrirHoja}
-              disabled={fichando || errorCarga}
-              className="flex flex-[0.8] cursor-pointer items-center justify-center gap-2.5 rounded-full bg-amber-500 py-4 text-lg font-semibold text-white shadow-[0_16px_28px_-14px_rgba(245,158,11,0.9)] transition hover:bg-amber-600 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-60"
-            >
-              <Pause size={22} />
-              Pausa
-            </button>
-          )}
-
           <button
             type="button"
             onClick={fichar}
@@ -557,7 +605,7 @@ export default function ControlHorario() {
               rounded-full py-4 text-lg font-semibold text-white
               transition active:scale-[0.98]
               disabled:cursor-not-allowed disabled:opacity-60
-              ${enJornada ? "flex-[1.2]" : "w-full"}
+              w-full
               ${
                 enJornada
                   ? "bg-red-600 shadow-[0_16px_28px_-14px_rgba(220,38,38,0.9)] hover:bg-red-700"

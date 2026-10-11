@@ -439,8 +439,8 @@ export default function CalendarioLaboral() {
                     }}
                     className={`
                       touch-manipulation
-                      flex h-20 flex-col items-center justify-between gap-1.5
-                      rounded-2xl border px-2 py-2 md:h-24
+                      flex min-h-[7.5rem] flex-col items-stretch gap-2
+                      rounded-2xl border p-2.5 text-left
                       transition
                       ${
                         tipoFinal
@@ -449,7 +449,6 @@ export default function CalendarioLaboral() {
                           ? "border-slate-200 bg-slate-100/80 text-slate-400"
                           : "border-slate-200 bg-white text-slate-400"
                       }
-                      ${isHoy ? "ring-2 ring-[#2f5bd3] ring-offset-2" : ""}
                       ${seleccionado ? "shadow-md ring-2 ring-slate-400" : ""}
                       ${
                         tipoFinal
@@ -458,64 +457,38 @@ export default function CalendarioLaboral() {
                       }
                     `}
                   >
-                    {/* ───────── TOP ───────── */}
-                    <div className="flex flex-col items-center gap-0.5">
-                      <div
-                        className={`flex h-6 min-w-6 items-center justify-center rounded-full px-1 text-sm font-bold leading-none ${
-                          isHoy ? "bg-[#2f5bd3] text-white" : ""
-                        }`}
-                      >
-                        {dia}
-                      </div>
-
-                      {tipoFinal?.estado && (
-                        <span className="whitespace-nowrap rounded-full bg-white/80 px-2 py-0.5 text-[10px] font-semibold uppercase">
-                          {ETIQUETA_ESTADO[tipoFinal.estado]}
-                        </span>
-                      )}
+                    <div
+                      className={`flex h-6 min-w-6 items-center justify-center self-start rounded-full px-1.5 text-sm font-bold leading-none ${
+                        isHoy ? "bg-[#2f5bd3] text-white" : ""
+                      }`}
+                    >
+                      {dia}
                     </div>
 
-                    {/* ───────── CENTER ───────── */}
-                    <div className="flex w-full flex-col items-center gap-0.5 px-1 text-center">
-                      {tipoFinal?.turno && (
-                        <div className="max-w-full overflow-hidden text-ellipsis whitespace-nowrap text-[11px] font-medium text-slate-700">
-                          {ETIQUETA_TURNO[tipoFinal.turno]}
-                        </div>
-                      )}
-
-                      {tipoFinal?.turno === "MANANA" &&
-                        tipoFinal.horaEntradaManana &&
-                        tipoFinal.horaSalidaManana && (
-                          <div className="text-[11px] leading-tight text-slate-600">
-                            {tipoFinal.horaEntradaManana} -{" "}
-                            {tipoFinal.horaSalidaManana}
-                          </div>
-                        )}
-
-                      {tipoFinal?.turno === "TARDE" &&
-                        tipoFinal.horaEntradaTarde &&
-                        tipoFinal.horaSalidaTarde && (
-                          <div className="text-[11px] leading-tight text-slate-600">
-                            {tipoFinal.horaEntradaTarde} -{" "}
-                            {tipoFinal.horaSalidaTarde}
-                          </div>
-                        )}
-
-                      {tipoFinal?.turno === "MANANA_TARDE" && (
-                        <div className="text-[11px] leading-tight text-slate-600">
-                          {tipoFinal.horaEntradaManana} -{" "}
-                          {tipoFinal.horaSalidaManana}
-                          <br />
-                          {tipoFinal.horaEntradaTarde} -{" "}
-                          {tipoFinal.horaSalidaTarde}
-                        </div>
-                      )}
-
+                    <div className="flex flex-col gap-0.5">
                       {tipoFinal?.horas && tipoFinal.estado !== "DIA_LIBRE" && (
-                        <div className="mt-0.5 text-[10px] font-semibold text-slate-700">
+                        <div className="text-sm font-bold leading-tight text-slate-900">
                           {tipoFinal.horas}
                         </div>
                       )}
+
+                      {(tipoFinal?.turno === "MANANA" ||
+                        tipoFinal?.turno === "MANANA_TARDE") &&
+                        tipoFinal.horaEntradaManana &&
+                        tipoFinal.horaSalidaManana && (
+                          <div className="whitespace-nowrap text-[11px] leading-tight text-slate-500">
+                            {tipoFinal.horaEntradaManana} – {tipoFinal.horaSalidaManana}
+                          </div>
+                        )}
+
+                      {(tipoFinal?.turno === "TARDE" ||
+                        tipoFinal?.turno === "MANANA_TARDE") &&
+                        tipoFinal.horaEntradaTarde &&
+                        tipoFinal.horaSalidaTarde && (
+                          <div className="whitespace-nowrap text-[11px] leading-tight text-slate-500">
+                            {tipoFinal.horaEntradaTarde} – {tipoFinal.horaSalidaTarde}
+                          </div>
+                        )}
                     </div>
                   </button>
                 );

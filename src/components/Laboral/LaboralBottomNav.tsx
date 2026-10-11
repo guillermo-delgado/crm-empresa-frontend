@@ -1,34 +1,30 @@
 import type { ReactNode } from "react";
 import { NavLink } from "react-router-dom";
-import {
-  Clock,
-  CalendarDays,
-  History,
-} from "lucide-react";
+import { Clock, CalendarDays, History } from "lucide-react";
 
 export default function LaboralBottomNav() {
   return (
     <nav
       aria-label="Navegación laboral"
-      className="md:hidden fixed bottom-0 left-0 right-0 z-50 border-t border-slate-300/60 bg-[#d5ddf0]/95 backdrop-blur-xl shadow-[0_-8px_24px_rgba(29,36,51,0.12)] pb-[env(safe-area-inset-bottom)]"
+      className="md:hidden fixed bottom-0 left-0 right-0 z-50 rounded-t-3xl border-t border-slate-200/70 bg-white shadow-[0_-10px_30px_rgba(29,36,51,0.10)] pb-[env(safe-area-inset-bottom)]"
     >
-      <div className="flex overflow-x-auto no-scrollbar px-1.5 py-1.5">
+      <div className="flex items-stretch px-3 pt-2 pb-2">
         <NavItem
           to="/laboral/control-horario"
           label="Horario"
-          icon={<Clock size={20} />}
+          icon={<Clock size={22} />}
         />
 
         <NavItem
           to="/laboral/calendario"
           label="Calendario"
-          icon={<CalendarDays size={20} />}
+          icon={<CalendarDays size={22} />}
         />
 
         <NavItem
           to="/laboral/historial"
           label="Historial"
-          icon={<History size={20} />}
+          icon={<History size={22} />}
         />
       </div>
     </nav>
@@ -48,23 +44,31 @@ function NavItem({
     <NavLink
       to={to}
       aria-label={label}
-      className="group relative flex min-w-[72px] flex-1 flex-shrink-0 flex-col items-center justify-center gap-0.5 py-1 outline-none"
+      className="group relative flex flex-1 flex-col items-center justify-center gap-1 py-1 outline-none"
     >
       {({ isActive }) => (
         <>
           <span
-            className={`flex h-8 w-14 items-center justify-center rounded-full transition-all duration-200 ${
+            className={`absolute -top-2 h-[3px] w-8 rounded-full transition-all duration-200 ${
+              isActive ? "bg-[#2f5bd3] opacity-100" : "opacity-0"
+            }`}
+          />
+
+          <span
+            className={`flex h-9 w-16 items-center justify-center rounded-2xl transition-all duration-200 ${
               isActive
-                ? "bg-white text-[#2f5bd3] shadow-[0_4px_12px_-4px_rgba(29,36,51,0.3)]"
-                : "text-slate-500 group-hover:bg-white/60 group-hover:text-slate-900 group-active:scale-95"
+                ? "bg-[#2f5bd3]/10 text-[#2f5bd3]"
+                : "text-slate-400 group-active:scale-95 group-hover:text-slate-600"
             }`}
           >
             {icon}
           </span>
 
           <span
-            className={`text-[10px] font-semibold leading-none transition-colors duration-200 ${
-              isActive ? "text-slate-900" : "text-slate-500 group-hover:text-slate-700"
+            className={`text-[11px] leading-none transition-colors duration-200 ${
+              isActive
+                ? "font-bold text-[#2f5bd3]"
+                : "font-medium text-slate-400 group-hover:text-slate-600"
             }`}
           >
             {label}

@@ -1,7 +1,9 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { ReactNode } from "react";
 import api from "../../../services/api";
+import BolsaHoras from "./BolsaHoras";
 import {
+  AlertCircle,
   Ban,
   Briefcase,
   CalendarDays,
@@ -10,7 +12,10 @@ import {
   ChevronRight,
   Clock,
   Coffee,
+  FileText,
+  Hourglass,
   ListChecks,
+  Loader2,
   Plane,
   Plus,
   Trash2,
@@ -138,12 +143,6 @@ const formatearBalance = (minutos: number) => {
     : `${signo}${m}min`;
 };
 
-/** "+12 h 05 min" para la tarjeta de resumen */
-const formatearBalanceLargo = (minutos: number) => {
-  if (!minutos) return "0 h 00 min";
-  return `${minutos > 0 ? "+" : "-"}${minutosAHoras(Math.abs(minutos))}`;
-};
-
 const minutosEntreHoras = (entrada: string, salida: string) =>
   horaAMinutos(salida) - horaAMinutos(entrada);
 
@@ -229,7 +228,9 @@ const resumenTramos = (tramos: Tramo[]) => {
     if (m > 0) trabajado += m;
     if (i > 0) {
       const gap = horaAMinutos(t.entrada) - horaAMinutos(completos[i - 1].salida);
-      if (gap > 0) pausas += gap;
+      // Solo cuenta como pausa si la salida anterior tiene motivo; un hueco
+      // sin motivo es simplemente el descanso entre dos turnos.
+      if (gap > 0 && completos[i - 1].motivo.trim()) pausas += gap;
     }
   });
   return { trabajado, pausas };
@@ -255,6 +256,8 @@ export default function HorarioCRM() {
   const [vacacionesUsadas, setVacacionesUsadas] = useState<number>(0);
 
   const [mostrarConfig, setMostrarConfig] = useState<boolean>(false);
+  const [mostrarBolsa, setMostrarBolsa] = useState<boolean>(false);
+  const [mostrarContrato, setMostrarContrato] = useState<boolean>(false);
   const [loading, setLoading] = useState<boolean>(false);
   const [aviso, setAviso] = useState<Aviso | null>(null);
 
@@ -618,7 +621,8 @@ export default function HorarioCRM() {
     }
 
     const t = lista[idx];
-    const antes: Tramo = nuevoTramo(t.entrada, desde, motivo.trim());
+    // Sin motivo se guarda como "Pausa": así se distingue de un hueco entre turnos
+    const antes: Tramo = nuevoTramo(t.entrada, desde, motivo.trim() || "Pausa");
     const despues: Tramo = nuevoTramo(hasta, t.salida, t.motivo);
 
     setTramos([...lista.slice(0, idx), antes, despues, ...lista.slice(idx + 1)]);
@@ -903,9 +907,9 @@ export default function HorarioCRM() {
     <div className="space-y-6 pb-28">
       {/* TÍTULO */}
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <h1 className="text-2xl font-semibold tracking-tight text-slate-800 flex items-center gap-2">
-          <span className="grid place-items-center h-10 w-10 rounded-2xl bg-[#2f5bd3]/10 text-[#2f5bd3]">
-            <CalendarDays size={20} />
+        <h1 className="text-[1.65rem] font-bold tracking-tight text-slate-900 flex items-center gap-3">
+          <span className="grid place-items-center h-11 w-11 rounded-2xl bg-[#2f5bd3] text-white shadow-[0_10px_22px_-10px_rgba(47,91,211,0.7)]">
+            <CalendarDays size={21} />
           </span>
           Gestión de empleados
         </h1>
@@ -932,9 +936,23 @@ export default function HorarioCRM() {
       )}
 
       {/* SELECTORES */}
-      <div className="flex flex-wrap items-center gap-3 rounded-3xl bg-white border border-slate-200/70 shadow-sm p-3">
-        <div className="flex items-center gap-2">
-          <Users size={18} className="text-slate-400" />
+      <div className="flex flex-wrap items-center gap-3 rounded-3xl bg-white border border-slate-200/70 shadow-[0_14px_34px_-24px_rgba(29,36,51,0.3)] p-3">
+        {/* Empleado */}
+        <div className="flex items-center gap-2.5 rounded-2xl bg-[#f1f3f8] pl-2 pr-1 py-1">
+          <span
+            aria-hidden="true"
+            className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-[#d5ddf0] text-xs font-bold text-[#2f5bd3]"
+          >
+            {empleadoId === "ALL" ? (
+              <Users size={16} />
+            ) : (
+              (() => {
+                const emp = empleados.find((e) => e._id === empleadoId);
+                const ini = `${emp?.nombre?.[0] ?? ""}${emp?.apellidos?.[0] ?? ""}`;
+                return ini.toUpperCase() || "·";
+              })()
+            )}
+          </span>
           <select
             value={empleadoId}
             onChange={(e) => {
@@ -943,7 +961,7 @@ export default function HorarioCRM() {
               setSeleccion(new Set());
               setUltimoClick(null);
             }}
-            className="border border-slate-200 rounded-xl px-3 py-2 bg-white text-sm focus:outline-none focus:ring-2 focus:ring-[#2f5bd3]/30"
+            className="bg-transparent rounded-xl px-2 py-2 text-sm font-semibold text-slate-800 focus:outline-none focus:ring-2 focus:ring-[#2f5bd3]/30 cursor-pointer"
           >
             <option value="ALL">Todos los empleados</option>
             {empleados.map((e) => (
@@ -954,10 +972,11 @@ export default function HorarioCRM() {
           </select>
         </div>
 
-        <div className="flex items-center gap-2">
+        {/* Mes */}
+        <div className="flex items-center gap-1.5 rounded-2xl bg-[#f1f3f8] p-1">
           <button
             onClick={() => cambiarMes(-1)}
-            className="p-2 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 transition cursor-pointer"
+            className="grid h-9 w-9 place-items-center rounded-xl bg-white text-slate-600 shadow-sm hover:text-[#2f5bd3] active:scale-95 transition cursor-pointer"
             title="Mes anterior"
           >
             <ChevronLeft size={18} />
@@ -967,24 +986,63 @@ export default function HorarioCRM() {
             type="month"
             value={mes}
             onChange={(e) => e.target.value && setMes(e.target.value)}
-            className="border border-slate-200 rounded-xl px-3 py-2 bg-white text-sm focus:outline-none focus:ring-2 focus:ring-[#2f5bd3]/30"
+            className="bg-transparent rounded-xl px-2 py-1.5 text-sm font-semibold text-slate-800 focus:outline-none focus:ring-2 focus:ring-[#2f5bd3]/30"
           />
 
           <button
             onClick={() => cambiarMes(1)}
-            className="p-2 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 transition cursor-pointer"
+            className="grid h-9 w-9 place-items-center rounded-xl bg-white text-slate-600 shadow-sm hover:text-[#2f5bd3] active:scale-95 transition cursor-pointer"
             title="Mes siguiente"
           >
             <ChevronRight size={18} />
           </button>
+
+          <button
+            onClick={() => setMes(mesActualISO())}
+            disabled={mes === mesActualISO()}
+            className="rounded-xl px-3 py-2 text-sm font-semibold text-[#2f5bd3] hover:bg-white transition cursor-pointer disabled:cursor-default disabled:opacity-40 disabled:hover:bg-transparent"
+          >
+            Hoy
+          </button>
         </div>
 
-        <div className="ml-auto flex items-center gap-2">
+        {/* Acciones */}
+        <div className="ml-auto flex flex-wrap items-center gap-2">
+          {empleadoId !== "ALL" && (
+            <button
+              onClick={() => setMostrarBolsa((v) => !v)}
+              aria-expanded={mostrarBolsa}
+              className={`flex items-center gap-2 rounded-full px-4 py-2 text-sm font-semibold border transition cursor-pointer ${
+                mostrarBolsa
+                  ? "bg-[#2f5bd3] text-white border-[#2f5bd3] shadow-[0_10px_22px_-12px_rgba(47,91,211,0.8)]"
+                  : "bg-white text-slate-700 border-slate-200 hover:bg-slate-50"
+              }`}
+            >
+              <Hourglass size={16} />
+              Bolsa de horas
+            </button>
+          )}
+
+          {empleadoId !== "ALL" && (
+            <button
+              onClick={() => setMostrarContrato((v) => !v)}
+              aria-expanded={mostrarContrato}
+              className={`flex items-center gap-2 rounded-full px-4 py-2 text-sm font-semibold border transition cursor-pointer ${
+                mostrarContrato
+                  ? "bg-[#2f5bd3] text-white border-[#2f5bd3] shadow-[0_10px_22px_-12px_rgba(47,91,211,0.8)]"
+                  : "bg-white text-slate-700 border-slate-200 hover:bg-slate-50"
+              }`}
+            >
+              <FileText size={16} />
+              Control de contrato
+            </button>
+          )}
+
           <button
             onClick={alternarModoSeleccion}
-            className={`flex items-center gap-2 rounded-xl px-4 py-2 text-sm font-medium border transition cursor-pointer ${
+            className={`flex items-center gap-2 rounded-full px-4 py-2 text-sm font-semibold border transition cursor-pointer ${
               modoSeleccion
-                ? "bg-[#2f5bd3] text-white border-[#2f5bd3]"
+                ? "bg-[#2f5bd3] text-white border-[#2f5bd3] shadow-[0_10px_22px_-12px_rgba(47,91,211,0.8)]"
                 : "bg-white text-slate-700 border-slate-200 hover:bg-slate-50"
             }`}
           >
@@ -995,7 +1053,11 @@ export default function HorarioCRM() {
           {empleadoId !== "ALL" && (
             <button
               onClick={() => setMostrarConfig((v) => !v)}
-              className="border border-slate-200 rounded-xl px-4 py-2 text-sm bg-white hover:bg-slate-50 cursor-pointer"
+              className={`rounded-full px-4 py-2 text-sm font-semibold border transition cursor-pointer ${
+                mostrarConfig
+                  ? "bg-[#e3eafb] text-[#2f5bd3] border-[#c9d6f6]"
+                  : "bg-white text-slate-700 border-slate-200 hover:bg-slate-50"
+              }`}
             >
               Editar empleado
             </button>
@@ -1004,19 +1066,22 @@ export default function HorarioCRM() {
       </div>
 
       {/* RESUMEN */}
-      <div className="grid grid-cols-2 lg:grid-cols-5 gap-4 bg-white rounded-3xl border border-slate-200/70 shadow-sm p-5">
+      <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
         <Resumen
+          icono={<Briefcase size={20} />}
+          estilo="bg-[#e3eafb] text-[#2f5bd3]"
           titulo="Horas contratadas / semana"
           valor={empleadoId === "ALL" ? "-" : `${horasContratadasSemana} h`}
         />
         <Resumen
+          icono={<Clock size={20} />}
+          estilo="bg-emerald-50 text-emerald-600"
           titulo="Horas trabajadas"
           valor={empleadoId === "ALL" ? "-" : minutosAHoras(horasTrabajadas)}
-        />
-        <Resumen
-          titulo="Balance"
-          valor={
-            empleadoId === "ALL" ? "-" : formatearBalanceLargo(balanceMinutos)
+          detalle={
+            empleadoId === "ALL"
+              ? undefined
+              : `${formatearBalance(balanceMinutos)} sobre las ${minutosAHoras(teoricosMes)} del mes`
           }
           tono={
             empleadoId === "ALL" || balanceMinutos === 0
@@ -1027,6 +1092,8 @@ export default function HorarioCRM() {
           }
         />
         <Resumen
+          icono={<Plane size={20} />}
+          estilo="bg-sky-50 text-sky-600"
           titulo="Máx. vacaciones"
           valor={empleadoId === "ALL" ? "-" : `${maxDiasVacaciones} días`}
           tono={
@@ -1049,6 +1116,8 @@ export default function HorarioCRM() {
           }
         />
         <Resumen
+          icono={<ListChecks size={20} />}
+          estilo="bg-violet-50 text-violet-600"
           titulo="Jornadas aplicadas (mes)"
           valor={empleadoId === "ALL" ? "-" : minutosAHoras(aplicadosMes)}
           detalle={
@@ -1069,6 +1138,11 @@ export default function HorarioCRM() {
           }
         />
       </div>
+
+      {/* BOLSA DE HORAS (se despliega con el botón de la barra superior) */}
+      {empleadoId !== "ALL" && mostrarBolsa && (
+        <BolsaHoras empleadoId={empleadoId} mes={mes} />
+      )}
 
       {/* AYUDA SELECCIÓN */}
       {modoSeleccion && (
@@ -1102,13 +1176,40 @@ export default function HorarioCRM() {
         </div>
       )}
 
+      {/* CONTROL DE CONTRATO (oculta el calendario mientras está abierto) */}
+      {empleadoId !== "ALL" && mostrarContrato && (
+        <ControlContrato
+          empleadoId={empleadoId}
+          mes={mes}
+          horasContratadasSemana={horasContratadasSemana}
+        />
+      )}
+
       {/* CALENDARIO */}
-      <div className="bg-white rounded-3xl border border-slate-200/70 shadow-sm p-4">
-        <div className="mb-3 text-lg font-semibold capitalize text-slate-800">
-          {etiquetaMes(year, mes1)}
+      {!(empleadoId !== "ALL" && mostrarContrato) && (
+      <div className="bg-white rounded-3xl border border-slate-200/70 shadow-[0_14px_34px_-24px_rgba(29,36,51,0.3)] p-5">
+        <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+          <div className="text-xl font-bold capitalize tracking-tight text-slate-900">
+            {etiquetaMes(year, mes1)}
+          </div>
+
+          <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs font-medium text-slate-500">
+            {[
+              ["bg-blue-300", "Vacaciones"],
+              ["bg-red-300", "Baja"],
+              ["bg-purple-300", "Festivo"],
+              ["bg-orange-300", "Libre"],
+              ["bg-slate-300", "Fin de semana"],
+            ].map(([punto, texto]) => (
+              <span key={texto} className="inline-flex items-center gap-1.5">
+                <span className={`h-2.5 w-2.5 rounded-full ${punto}`} />
+                {texto}
+              </span>
+            ))}
+          </div>
         </div>
 
-        <div className="grid grid-cols-7 gap-2 text-center text-sm">
+        <div className="grid grid-cols-7 gap-2.5 text-center text-sm">
           {SEMANA.map((d, i) =>
             modoSeleccion ? (
               <button
@@ -1120,7 +1221,10 @@ export default function HorarioCRM() {
                 {d}
               </button>
             ) : (
-              <div key={d} className="font-medium text-slate-500 py-1">
+              <div
+                key={d}
+                className="py-1 text-xs font-semibold uppercase tracking-wider text-slate-400"
+              >
                 {d}
               </div>
             )
@@ -1135,8 +1239,6 @@ export default function HorarioCRM() {
             const dia = mapaDias.get(fecha);
             const marcado = seleccion.has(fecha);
             const esHoy = fecha === hoy;
-            const nEntradas =
-              dia?.fichajes.filter((f) => f.tipo === "ENTRADA").length ?? 0;
 
             return (
               <div key={fecha} className="relative group">
@@ -1147,99 +1249,106 @@ export default function HorarioCRM() {
                       : abrirDia(fecha, "ACCIONES")
                   }
                   className={`
-                    h-24 w-full cursor-pointer rounded-xl border
-                    flex flex-col justify-between items-center
-                    px-1 py-1 font-semibold transition overflow-hidden
-                    hover:shadow-sm
+                    h-full min-h-[7.75rem] w-full cursor-pointer rounded-2xl border
+                    flex flex-col items-stretch gap-2 text-left
+                    px-2.5 py-2 font-semibold transition
+                    hover:shadow-[0_10px_22px_-14px_rgba(29,36,51,0.45)] hover:-translate-y-px
                     ${claseDia(fecha, dia)}
                     ${esHoy ? "ring-2 ring-[#2f5bd3]/60" : ""}
                     ${marcado ? "ring-2 ring-offset-1 ring-[#2f5bd3] bg-[#2f5bd3]/10" : ""}
                   `}
                 >
-                  <div className="w-full flex items-center justify-between px-1">
+                  {/* CABECERA: día · balance */}
+                  <div className="flex items-center justify-between gap-1">
                     <span
-                      className={`text-base leading-none ${
-                        esHoy ? "text-[#2f5bd3]" : ""
+                      className={`grid h-6 min-w-6 place-items-center rounded-full px-1 text-sm leading-none ${
+                        esHoy ? "bg-[#2f5bd3] text-white" : "text-slate-800"
                       }`}
                     >
                       {n}
                     </span>
-                    {modoSeleccion && (
-                      <span
-                        className={`grid place-items-center h-4 w-4 rounded-full border ${
-                          marcado
-                            ? "bg-[#2f5bd3] border-[#2f5bd3] text-white"
-                            : "border-slate-300 bg-white"
-                        }`}
-                      >
-                        {marcado && <Check size={10} strokeWidth={3} />}
-                      </span>
-                    )}
+
+                    <div className="flex items-center gap-1.5">
+                      {empleadoId !== "ALL" &&
+                        dia &&
+                        dia.turno &&
+                        (() => {
+                          const balance = calcularBalanceDia(dia);
+                          if (balance === null) return null;
+                          return (
+                            <span
+                              className={`rounded-full px-2 py-[2px] text-[11px] font-semibold leading-none ${
+                                balance === 0
+                                  ? "bg-emerald-50 text-emerald-700"
+                                  : balance < 0
+                                  ? "bg-red-50 text-red-600"
+                                  : "bg-emerald-50 text-emerald-700"
+                              }`}
+                            >
+                              {balance === 0 ? "OK" : formatearBalance(balance)}
+                            </span>
+                          );
+                        })()}
+
+                      {modoSeleccion && (
+                        <span
+                          className={`grid place-items-center h-4 w-4 rounded-full border ${
+                            marcado
+                              ? "bg-[#2f5bd3] border-[#2f5bd3] text-white"
+                              : "border-slate-300 bg-white"
+                          }`}
+                        >
+                          {marcado && <Check size={10} strokeWidth={3} />}
+                        </span>
+                      )}
+                    </div>
                   </div>
 
-                  <div className="flex flex-col items-center gap-[2px] text-center flex-1 overflow-hidden">
+                  {/* CUERPO: horas trabajadas · horario del turno */}
+                  <div className="flex flex-col gap-1">
                     {empleadoId !== "ALL" && dia && dia.minutosTrabajados > 0 && (
-                      <div className="text-[11px] text-slate-600 font-medium">
+                      <div className="text-[15px] font-bold leading-none text-slate-900">
                         {Math.floor(dia.minutosTrabajados / 60)}h{" "}
-                        {dia.minutosTrabajados % 60}m
-                      </div>
-                    )}
-
-                    {empleadoId !== "ALL" && nEntradas >= 2 && (
-                      <div className="flex items-center gap-1 text-[10px] text-amber-700 bg-amber-50 border border-amber-200 rounded-full px-1.5">
-                        <Coffee size={9} />
-                        {nEntradas} tramos
-                      </div>
-                    )}
-
-                    {dia?.turno && (
-                      <div className="px-2 py-[2px] rounded-full text-[10px] font-semibold bg-white/70 text-slate-800">
-                        {ETIQUETA_TURNO[dia.turno]}
+                        {String(dia.minutosTrabajados % 60).padStart(2, "0")}m
                       </div>
                     )}
 
                     {dia?.turno === "MANANA" &&
                       dia.horaEntradaManana &&
                       dia.horaSalidaManana && (
-                        <div className="text-[11px] text-slate-600">
-                          {dia.horaEntradaManana} - {dia.horaSalidaManana}
+                        <div className="text-[11px] font-medium leading-tight text-slate-500 tabular-nums">
+                          {dia.horaEntradaManana} – {dia.horaSalidaManana}
                         </div>
                       )}
 
                     {dia?.turno === "TARDE" &&
                       dia.horaEntradaTarde &&
                       dia.horaSalidaTarde && (
-                        <div className="text-[11px] text-slate-600">
-                          {dia.horaEntradaTarde} - {dia.horaSalidaTarde}
+                        <div className="text-[11px] font-medium leading-tight text-slate-500 tabular-nums">
+                          {dia.horaEntradaTarde} – {dia.horaSalidaTarde}
                         </div>
                       )}
 
                     {dia?.turno === "MANANA_TARDE" &&
                       (dia.horaEntradaManana || dia.horaEntradaTarde) && (
-                        <div className="text-[11px] text-slate-600 leading-tight">
-                          {dia.horaEntradaManana} - {dia.horaSalidaManana}
-                          <br />
-                          {dia.horaEntradaTarde} - {dia.horaSalidaTarde}
+                        <>
+                          <div className="text-[11px] font-medium leading-tight text-slate-500 tabular-nums">
+                            {dia.horaEntradaManana} – {dia.horaSalidaManana}
+                          </div>
+                          <div className="text-[11px] font-medium leading-tight text-slate-500 tabular-nums">
+                            {dia.horaEntradaTarde} – {dia.horaSalidaTarde}
+                          </div>
+                        </>
+                      )}
+
+                    {/* turno sin horas definidas: solo el nombre */}
+                    {dia?.turno &&
+                      !(dia.horaEntradaManana || dia.horaEntradaTarde) && (
+                        <div className="text-[11px] font-medium leading-tight text-slate-500">
+                          {ETIQUETA_TURNO[dia.turno]}
                         </div>
                       )}
                   </div>
-
-                  {empleadoId !== "ALL" &&
-                    dia &&
-                    dia.turno &&
-                    (() => {
-                      const balance = calcularBalanceDia(dia);
-                      if (balance === null) return null;
-                      return (
-                        <div
-                          className={`text-[11px] font-semibold leading-none mt-auto ${
-                            balance < 0 ? "text-red-600" : "text-green-600"
-                          }`}
-                        >
-                          {balance === 0 ? "OK" : formatearBalance(balance)}
-                        </div>
-                      );
-                    })()}
                 </button>
 
                 {/* HOVER ACCIONES (no en selección múltiple) */}
@@ -1249,7 +1358,7 @@ export default function HorarioCRM() {
                       absolute inset-0 bg-slate-900/55
                       opacity-0 group-hover:opacity-100 group-focus-within:opacity-100
                       transition flex items-center justify-center
-                      rounded-xl overflow-hidden z-10 pointer-events-none
+                      rounded-2xl overflow-hidden z-10 pointer-events-none
                       group-hover:pointer-events-auto group-focus-within:pointer-events-auto
                     "
                   >
@@ -1280,6 +1389,7 @@ export default function HorarioCRM() {
           })}
         </div>
       </div>
+      )}
 
       {/* CONFIGURACIÓN EMPLEADO */}
       {mostrarConfig && empleadoId !== "ALL" && (
@@ -1625,6 +1735,8 @@ export default function HorarioCRM() {
                 horaOk(t.entrada) && horaOk(t.salida)
                   ? minutosEntreHoras(t.entrada, t.salida)
                   : null;
+              // Pausa real = la salida tiene motivo; si no, es el hueco entre turnos
+              const esPausa = t.motivo.trim() !== "";
 
               return (
                 <div key={t.id} className="space-y-2">
@@ -1670,10 +1782,25 @@ export default function HorarioCRM() {
                   </div>
 
                   {hayPausa && (
-                    <div className="ml-6 flex flex-wrap items-center gap-2 rounded-2xl bg-amber-50 border border-amber-200 px-3 py-2">
-                      <Coffee size={14} className="text-amber-700" />
-                      <span className="text-sm text-amber-800 font-medium">
-                        Pausa {t.salida} → {siguiente.entrada} (
+                    <div
+                      className={`ml-6 flex flex-wrap items-center gap-2 rounded-2xl border px-3 py-2 ${
+                        esPausa
+                          ? "bg-amber-50 border-amber-200"
+                          : "bg-slate-50 border-slate-200"
+                      }`}
+                    >
+                      {esPausa ? (
+                        <Coffee size={14} className="text-amber-700" />
+                      ) : (
+                        <Clock size={14} className="text-slate-500" />
+                      )}
+                      <span
+                        className={`text-sm font-medium ${
+                          esPausa ? "text-amber-800" : "text-slate-600"
+                        }`}
+                      >
+                        {esPausa ? "Pausa" : "Entre tramos"} {t.salida} →{" "}
+                        {siguiente.entrada} (
                         {minutosAHoras(
                           horaAMinutos(siguiente.entrada) -
                             horaAMinutos(t.salida)
@@ -1688,15 +1815,21 @@ export default function HorarioCRM() {
                         onChange={(e) =>
                           cambiarTramo(t.id, { motivo: e.target.value })
                         }
-                        placeholder="Motivo"
-                        className="flex-1 min-w-[120px] border border-amber-200 bg-white rounded-lg px-2 py-1 text-sm"
+                        placeholder={
+                          esPausa ? "Motivo" : "Motivo (solo si fue una pausa)"
+                        }
+                        className={`flex-1 min-w-[120px] bg-white rounded-lg border px-2 py-1 text-sm ${
+                          esPausa ? "border-amber-200" : "border-slate-200"
+                        }`}
                       />
-                      <button
-                        onClick={() => quitarPausa(t.id)}
-                        className="text-xs text-amber-800 underline cursor-pointer"
-                      >
-                        Quitar pausa
-                      </button>
+                      {esPausa && (
+                        <button
+                          onClick={() => quitarPausa(t.id)}
+                          className="text-xs text-amber-800 underline cursor-pointer"
+                        >
+                          Quitar pausa
+                        </button>
+                      )}
                     </div>
                   )}
                 </div>
@@ -1806,24 +1939,52 @@ function Resumen({
   valor,
   tono = "normal",
   detalle,
+  icono,
+  estilo = "bg-[#e3eafb] text-[#2f5bd3]",
 }: {
   titulo: string;
   valor: string;
   tono?: "normal" | "bueno" | "malo";
   detalle?: string;
+  icono?: ReactNode;
+  estilo?: string;
 }) {
   const color =
     tono === "malo"
       ? "text-red-600"
       : tono === "bueno"
       ? "text-emerald-600"
-      : "text-slate-800";
+      : "text-slate-900";
+
+  const colorDetalle =
+    tono === "malo"
+      ? "text-red-600"
+      : tono === "bueno"
+      ? "text-emerald-600"
+      : "text-slate-500";
 
   return (
-    <div className="text-center">
-      <div className="text-sm text-slate-500">{titulo}</div>
-      <div className={`text-xl font-semibold ${color}`}>{valor}</div>
-      {detalle && <div className={`mt-1 text-xs ${color}`}>{detalle}</div>}
+    <div className="flex items-start gap-3.5 rounded-3xl border border-slate-200/70 bg-white p-4 shadow-[0_14px_34px_-24px_rgba(29,36,51,0.3)]">
+      {icono && (
+        <span
+          className={`grid h-11 w-11 shrink-0 place-items-center rounded-2xl ${estilo}`}
+        >
+          {icono}
+        </span>
+      )}
+      <div className="min-w-0">
+        <div className="text-[11px] font-semibold uppercase tracking-wider text-slate-500">
+          {titulo}
+        </div>
+        <div className={`text-2xl font-bold leading-tight ${color}`}>
+          {valor}
+        </div>
+        {detalle && (
+          <div className={`mt-1 text-xs leading-snug ${colorDetalle}`}>
+            {detalle}
+          </div>
+        )}
+      </div>
     </div>
   );
 }
@@ -1933,6 +2094,568 @@ function Modal({
       >
         {children}
       </div>
+    </div>
+  );
+}
+
+/* =========================
+   CONTROL DE CONTRATO
+========================= */
+type DiaMes = {
+  fecha: string;
+  estado: string | null;
+  minutosTrabajados: number;
+};
+
+type ResumenMes = {
+  mes: string; // YYYY-MM
+  trabajados: number; // minutos
+  objetivo: number; // minutos que tocaban (laborables sin estado)
+  diasLaborables: number;
+};
+
+type ControlContratoProps = {
+  empleadoId: string;
+  /** Mes que se está viendo (YYYY-MM): de aquí sale el año */
+  mes: string;
+  horasContratadasSemana: number;
+};
+
+const NOMBRES_MES = [
+  "Enero",
+  "Febrero",
+  "Marzo",
+  "Abril",
+  "Mayo",
+  "Junio",
+  "Julio",
+  "Agosto",
+  "Septiembre",
+  "Octubre",
+  "Noviembre",
+  "Diciembre",
+];
+
+/* =======================
+   HELPERS
+======================= */
+const conSigno = (min: number) => {
+  const r = Math.round(min);
+  if (r === 0) return "0 h 00 min";
+  return `${r > 0 ? "+" : "-"}${minutosAHoras(Math.abs(r))}`;
+};
+
+const aHorasDecimal = (min: number) =>
+  (min / 60).toLocaleString("es-ES", {
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 2,
+  });
+
+/** Jornada completa de referencia (horas/semana) para calcular el % */
+const JORNADA_COMPLETA_H = 40;
+
+const porcentaje = (horasSemana: number) =>
+  ((horasSemana / JORNADA_COMPLETA_H) * 100).toLocaleString("es-ES", {
+    maximumFractionDigits: 1,
+  });
+
+/** Acepta "34,5" y "34.5" */
+const leerHoras = (texto: string): number | null => {
+  const n = Number(texto.trim().replace(",", "."));
+  return texto.trim() !== "" && Number.isFinite(n) && n >= 0 ? n : null;
+};
+
+/* =======================
+   COMPONENTE
+   Control de contrato: reparto anual de horas del empleado.
+   - Objetivo anual = horas/semana ÷ 5 por cada día laborable (L-V) sin
+     estado (las vacaciones, festivos, libres y bajas ya aplicados no cuentan).
+   - Cuántas horas a la semana quedan por hacer hasta fin de año.
+======================= */
+function ControlContrato({
+  empleadoId,
+  mes,
+  horasContratadasSemana,
+}: ControlContratoProps) {
+  const anio = Number(mes.slice(0, 4));
+
+  const [dias, setDias] = useState<DiaMes[]>([]);
+  const [cargando, setCargando] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [horasInput, setHorasInput] = useState("");
+  const [nominaMin, setNominaMin] = useState(0); // horas ya pagadas en nómina este año
+  const [descontarNomina, setDescontarNomina] = useState(false);
+  const descuento = descontarNomina ? nominaMin : 0;
+
+  /* ---------- Carga de los 12 meses del año ---------- */
+  useEffect(() => {
+    let cancelado = false;
+
+    const cargar = async () => {
+      setCargando(true);
+      setError(null);
+
+      const meses = Array.from(
+        { length: 12 },
+        (_, i) => `${anio}-${String(i + 1).padStart(2, "0")}`
+      );
+
+      const respuestas = await Promise.allSettled(
+        meses.map((m) =>
+          api.get("/crm/horario", { params: { mes: m, empleadoId } })
+        )
+      );
+
+      if (cancelado) return;
+
+      if (respuestas.some((r) => r.status === "rejected")) {
+        setDias([]);
+        setError("No se han podido cargar todos los meses del año.");
+        setCargando(false);
+        return;
+      }
+
+      const todos: DiaMes[] = [];
+      respuestas.forEach((r) => {
+        if (r.status !== "fulfilled") return;
+        (r.value.data?.dias ?? []).forEach((d: any) => {
+          todos.push({
+            fecha: d.fecha,
+            estado: d.estado ?? null,
+            minutosTrabajados: Number(d.minutosTrabajados) || 0,
+          });
+        });
+      });
+
+      // Horas extra ya pagadas en nómina: no cuentan para la jornada anual
+      let nomina = 0;
+      try {
+        const saldo = await api.get("/crm/horario/saldo", {
+          params: { empleadoId, mes },
+        });
+        (saldo.data?.ajustes ?? []).forEach((a: any) => {
+          if (a.tipo === "NOMINA" && String(a.fecha).startsWith(String(anio))) {
+            nomina += Math.abs(Number(a.minutos) || 0);
+          }
+        });
+      } catch {
+        nomina = 0;
+      }
+      if (cancelado) return;
+
+      setNominaMin(nomina);
+      setDias(todos);
+      setCargando(false);
+    };
+
+    cargar();
+
+    return () => {
+      cancelado = true;
+    };
+  }, [empleadoId, anio, mes]);
+
+  /* ---------- Cálculos ---------- */
+  const calculo = useMemo(() => {
+    const minutosDia = (horasContratadasSemana * 60) / 5;
+    const hoy = hoyISO();
+
+    const porMes = new Map<string, ResumenMes>();
+    for (let i = 1; i <= 12; i++) {
+      const clave = `${anio}-${String(i).padStart(2, "0")}`;
+      porMes.set(clave, {
+        mes: clave,
+        trabajados: 0,
+        objetivo: 0,
+        diasLaborables: 0,
+      });
+    }
+
+    let trabajados = 0;
+    let objetivo = 0;
+    let diasRestantes = 0; // laborables sin estado después de hoy
+    let diasLaborablesAnio = 0; // laborables sin estado de todo el año
+
+    dias.forEach((d) => {
+      const resumen = porMes.get(d.fecha.slice(0, 7));
+      if (!resumen) return;
+
+      resumen.trabajados += d.minutosTrabajados;
+      trabajados += d.minutosTrabajados;
+
+      const laborable = !d.estado && !esFinDeSemana(d.fecha);
+      if (laborable) {
+        resumen.objetivo += minutosDia;
+        resumen.diasLaborables += 1;
+        objetivo += minutosDia;
+        diasLaborablesAnio += 1;
+        if (d.fecha > hoy) diasRestantes += 1;
+      }
+    });
+
+    const brutos = trabajados;
+    trabajados = brutos - descuento;
+
+    const meses = Array.from(porMes.values());
+    const mesesTranscurridos =
+      hoy.slice(0, 4) > String(anio)
+        ? 12
+        : hoy.slice(0, 4) < String(anio)
+        ? 0
+        : Number(hoy.slice(5, 7));
+
+    return {
+      meses,
+      trabajados,
+      brutos,
+      objetivo,
+      restante: objetivo - trabajados,
+      semanasRestantes: diasRestantes / 5,
+      diasRestantes,
+      semanasAnio: diasLaborablesAnio / 5,
+      mediaMensual: mesesTranscurridos > 0 ? trabajados / mesesTranscurridos : 0,
+      mediaObjetivoMensual: objetivo / 12,
+      mesesTranscurridos,
+      hoyMes: hoy.slice(0, 7),
+    };
+  }, [dias, anio, horasContratadasSemana, descuento]);
+
+  const horasSemana = leerHoras(horasInput);
+  const proyeccion =
+    horasSemana !== null
+      ? calculo.trabajados + horasSemana * 60 * calculo.semanasRestantes
+      : null;
+
+  // Contrato semanal que corresponde: las horas del año repartidas entre las
+  // semanas laborables del año (mismas que usa la jornada anual)
+  const contratoRecomendado =
+    proyeccion !== null && calculo.semanasAnio > 0
+      ? proyeccion / 60 / calculo.semanasAnio
+      : null;
+
+  /* ---------- Render ---------- */
+  if (cargando) {
+    return (
+      <div className="flex items-center justify-center rounded-3xl border border-slate-200/70 bg-white p-12 shadow-[0_14px_34px_-24px_rgba(29,36,51,0.3)]">
+        <Loader2 className="animate-spin text-[#2f5bd3]" size={28} />
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div
+        role="alert"
+        className="flex items-center gap-2.5 rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-medium text-red-700"
+      >
+        <AlertCircle size={18} className="shrink-0" />
+        {error}
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-5">
+      {/* RESUMEN ANUAL */}
+      <div className="rounded-3xl border border-slate-200/70 bg-white p-5 shadow-[0_14px_34px_-24px_rgba(29,36,51,0.3)]">
+        <div className="mb-4 flex flex-wrap items-baseline justify-between gap-2">
+          <h2 className="text-lg font-bold tracking-tight text-slate-900">
+            Control de contrato {anio}
+          </h2>
+          <span className="text-sm text-slate-500">
+            {aHorasDecimal(horasContratadasSemana * 60)} h/semana contratadas
+          </span>
+        </div>
+
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
+          <Dato
+            titulo="Jornada anual"
+            valor={minutosAHoras(calculo.objetivo)}
+            detalle={`Media ${minutosAHoras(
+              calculo.mediaObjetivoMensual
+            )} al mes`}
+          />
+          <Dato
+            titulo="Trabajadas hasta hoy"
+            valor={minutosAHoras(calculo.trabajados)}
+            detalle={
+              descuento > 0
+                ? `${minutosAHoras(calculo.brutos)} menos ${minutosAHoras(
+                    descuento
+                  )} pagadas en nómina`
+                : calculo.mesesTranscurridos > 0
+                ? `Media ${minutosAHoras(calculo.mediaMensual)} al mes`
+                : undefined
+            }
+          />
+          <Dato
+            titulo={calculo.restante >= 0 ? "Faltan por hacer" : "Te pasas"}
+            valor={minutosAHoras(Math.abs(calculo.restante))}
+            tono={calculo.restante > 0 ? "malo" : "bueno"}
+          />
+          <Dato
+            titulo="Semanas que quedan"
+            valor={calculo.semanasRestantes.toLocaleString("es-ES", {
+              maximumFractionDigits: 1,
+            })}
+            detalle={`${calculo.diasRestantes} días laborables`}
+          />
+        </div>
+      </div>
+
+      {/* CALCULADORA */}
+      <div className="rounded-3xl border border-slate-200/70 bg-white p-5 shadow-[0_14px_34px_-24px_rgba(29,36,51,0.3)]">
+        <h3 className="text-base font-bold text-slate-900">
+          Contrato que le corresponde
+        </h3>
+
+        {calculo.semanasRestantes === 0 ? (
+          <p className="mt-2 text-sm text-slate-500">
+            No quedan días laborables en {anio}.
+          </p>
+        ) : (
+          <>
+            {nominaMin > 0 && (
+              <button
+                type="button"
+                role="switch"
+                aria-checked={descontarNomina}
+                onClick={() => setDescontarNomina((v) => !v)}
+                className="mt-4 flex cursor-pointer items-center gap-3 text-left"
+              >
+                <span
+                  className={`relative inline-flex h-6 w-11 shrink-0 items-center rounded-full transition ${
+                    descontarNomina ? "bg-[#2f5bd3]" : "bg-slate-300"
+                  }`}
+                >
+                  <span
+                    className={`inline-block h-5 w-5 rounded-full bg-white shadow transition-transform ${
+                      descontarNomina ? "translate-x-5" : "translate-x-0.5"
+                    }`}
+                  />
+                </span>
+                <span className="text-sm text-slate-700">
+                  <span className="font-semibold">
+                    Descontar las horas pagadas en nómina
+                  </span>{" "}
+                  ({minutosAHoras(nominaMin)} este año)
+                  <span className="block text-xs text-slate-500">
+                    {descontarNomina
+                      ? "Se restan: el contrato cubre solo su jornada normal."
+                      : "No se restan: el contrato refleja todo lo que ha trabajado."}
+                  </span>
+                </span>
+              </button>
+            )}
+
+            <div className="mt-4 flex flex-wrap items-center gap-3">
+              <label className="text-sm font-medium text-slate-600">
+                Si hace desde hoy hasta fin de año
+              </label>
+              <div className="flex items-center rounded-full border-2 border-[#2f5bd3]/40 bg-white px-4 py-2 focus-within:border-[#2f5bd3]">
+                <input
+                  type="text"
+                  inputMode="decimal"
+                  value={horasInput}
+                  onChange={(e) => setHorasInput(e.target.value)}
+                  placeholder="escribe"
+                  className="w-20 bg-transparent placeholder:text-sm placeholder:font-normal placeholder:text-slate-300 text-right text-base font-semibold text-slate-900 outline-none"
+                />
+                <span className="ml-2 text-sm text-slate-500">h / semana</span>
+              </div>
+            </div>
+
+            {horasInput.trim() === "" && (
+              <p className="mt-3 text-sm text-slate-500">
+                Escribe las horas a la semana que crees que va a hacer hasta
+                fin de año y te digo el contrato que necesitaría.
+              </p>
+            )}
+
+            {horasInput.trim() !== "" && horasSemana === null && (
+              <p className="mt-3 text-sm text-red-600">
+                Escribe un número válido, por ejemplo 34,5.
+              </p>
+            )}
+
+            {proyeccion !== null && contratoRecomendado !== null && (
+              <div className="mt-4 space-y-3">
+                <div className="rounded-2xl bg-[#e3eafb] px-4 py-3 text-[#1f3f9c]">
+                  <div className="text-[11px] font-semibold uppercase tracking-wider">
+                    Debería estar contratado a
+                  </div>
+                  <div className="mt-0.5 text-2xl font-bold">
+                    {contratoRecomendado.toLocaleString("es-ES", {
+                      maximumFractionDigits: 2,
+                    })}{" "}
+                    h / semana
+                  </div>
+                  <div className="mt-1 text-lg font-bold">
+                    {porcentaje(contratoRecomendado)} % de jornada
+                  </div>
+                  <div className="mt-0.5 text-xs">
+                    Ahora está a{" "}
+                    {aHorasDecimal(horasContratadasSemana * 60)} h
+                    {Math.abs(
+                      contratoRecomendado - horasContratadasSemana
+                    ) < 0.01
+                      ? " · cuadra justo."
+                      : ` · ${
+                          contratoRecomendado > horasContratadasSemana
+                            ? "+"
+                            : "-"
+                        }${aHorasDecimal(
+                          Math.abs(
+                            contratoRecomendado - horasContratadasSemana
+                          ) * 60
+                        )} h a la semana de diferencia.`}
+                  </div>
+                  <div className="mt-0.5 text-xs">
+                    Jornada actual {porcentaje(horasContratadasSemana)} %
+                    {Math.abs(
+                      contratoRecomendado - horasContratadasSemana
+                    ) < 0.01
+                      ? ""
+                      : ` · diferencia ${
+                          contratoRecomendado > horasContratadasSemana
+                            ? "+"
+                            : "-"
+                        }${porcentaje(
+                          Math.abs(
+                            contratoRecomendado - horasContratadasSemana
+                          )
+                        )} puntos de jornada.`}
+                  </div>
+                </div>
+
+                <p className="text-sm text-slate-600">
+                  Con {horasSemana?.toLocaleString("es-ES")} h a la semana
+                  hasta fin de año, el total sería{" "}
+                  <strong className="text-slate-900">
+                    {minutosAHoras(proyeccion)}
+                  </strong>{" "}
+                  ({calculo.semanasAnio.toLocaleString("es-ES", {
+                    maximumFractionDigits: 1,
+                  })}{" "}
+                  semanas laborables en {anio}).
+                  {descuento > 0 &&
+                    ` Ya descontadas ${minutosAHoras(
+                      descuento
+                    )} pagadas en nómina.`}
+                </p>
+                <p className="text-xs text-slate-400">
+                  El % se calcula sobre {JORNADA_COMPLETA_H} h semanales de
+                  jornada completa. Si tu convenio fija otra, el porcentaje
+                  cambia.
+                </p>
+              </div>
+            )}
+          </>
+        )}
+      </div>
+
+      {/* DETALLE POR MES */}
+      <div className="rounded-3xl border border-slate-200/70 bg-white p-5 shadow-[0_14px_34px_-24px_rgba(29,36,51,0.3)]">
+        <h3 className="mb-3 text-base font-bold text-slate-900">
+          Mes a mes
+        </h3>
+
+        <div className="overflow-x-auto">
+          <table className="w-full min-w-[420px] text-sm">
+            <thead>
+              <tr className="text-left text-[11px] font-semibold uppercase tracking-wider text-slate-400">
+                <th className="py-2 pr-3">Mes</th>
+                <th className="py-2 pr-3 text-right">Trabajadas</th>
+                <th className="py-2 pr-3 text-right">Tocaban</th>
+                <th className="py-2 text-right">Diferencia</th>
+              </tr>
+            </thead>
+            <tbody>
+              {calculo.meses.map((m, i) => {
+                const futuro = m.mes > calculo.hoyMes;
+                const actual = m.mes === calculo.hoyMes;
+                const dif = m.trabajados - m.objetivo;
+
+                return (
+                  <tr
+                    key={m.mes}
+                    className="border-t border-slate-100 text-slate-700"
+                  >
+                    <td className="py-2 pr-3 font-medium">
+                      {NOMBRES_MES[i]}
+                      {actual && (
+                        <span className="ml-2 rounded-full bg-[#e3eafb] px-2 py-0.5 text-[10px] font-semibold text-[#2f5bd3]">
+                          en curso
+                        </span>
+                      )}
+                    </td>
+                    <td className="py-2 pr-3 text-right">
+                      {futuro ? "—" : minutosAHoras(m.trabajados)}
+                    </td>
+                    <td className="py-2 pr-3 text-right">
+                      {minutosAHoras(m.objetivo)}
+                    </td>
+                    <td
+                      className={`py-2 text-right font-semibold ${
+                        futuro || actual
+                          ? "text-slate-400"
+                          : dif < 0
+                          ? "text-red-600"
+                          : dif > 0
+                          ? "text-emerald-600"
+                          : "text-slate-500"
+                      }`}
+                    >
+                      {futuro || actual ? "—" : conSigno(dif)}
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+
+        <p className="mt-4 text-xs leading-relaxed text-slate-400">
+          Se cuentan solo los días laborables (L–V) sin vacaciones, festivo,
+          día libre ni baja. Lo que aún no hayas marcado en el calendario
+          cuenta como día de trabajo.
+        </p>
+      </div>
+    </div>
+  );
+}
+
+/* =======================
+   TARJETA DE DATO
+======================= */
+function Dato({
+  titulo,
+  valor,
+  detalle,
+  tono = "normal",
+}: {
+  titulo: string;
+  valor: string;
+  detalle?: string;
+  tono?: "normal" | "bueno" | "malo";
+}) {
+  return (
+    <div className="rounded-2xl bg-[#f5f7fc] px-4 py-3">
+      <div className="text-[11px] font-semibold uppercase tracking-wider text-slate-500">
+        {titulo}
+      </div>
+      <div
+        className={`mt-0.5 text-xl font-bold leading-tight ${
+          tono === "malo"
+            ? "text-red-600"
+            : tono === "bueno"
+            ? "text-emerald-600"
+            : "text-slate-900"
+        }`}
+      >
+        {valor}
+      </div>
+      {detalle && <div className="mt-0.5 text-xs text-slate-500">{detalle}</div>}
     </div>
   );
 }

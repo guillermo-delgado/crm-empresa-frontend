@@ -3,17 +3,16 @@ import api from "../../services/api";
 import {
   AlertCircle,
   CalendarDays,
+  Check,
   ChevronDown,
   ChevronLeft,
   ChevronRight,
-  Clock,
   Loader2,
-  LogIn,
-  LogOut,
   Timer,
 } from "lucide-react";
 import {
   addDias,
+  esFinDeSemana,
   esMesFuturo,
   etiquetaMes,
   formatFechaES,
@@ -38,6 +37,7 @@ type Fichaje = {
 type Dia = {
   fecha: string;
   diaSemana: string;
+  estado?: string | null; // VACACIONES | DIA_LIBRE | BAJA | FESTIVO
   minutosTrabajados: number;
   fichajes: Fichaje[];
 };
@@ -50,11 +50,42 @@ type HistorialResponse = {
   dias: Dia[];
 };
 
+type AjusteSaldo = {
+  id: string;
+  fecha: string;
+  tipo: "DESCANSO" | "NOMINA" | "REGULARIZACION";
+  minutos: number;
+  comentario: string;
+};
+
+type Saldo = {
+  saldoMinutos: number;
+  esMesActual: boolean;
+  esMesFuturo: boolean;
+  aperturaMinutos: number; // lo que traía de meses anteriores
+  mesMinutos: number; // horas del mes (trabajadas − las que tocaban)
+  ajustesMesMinutos: number;
+  cierreMinutos: number; // apertura + mes + ajustes
+  confirmadoMinutos: number; // pendiente real (sin el mes en curso)
+  ajustes: AjusteSaldo[];
+};
+
+const ETIQUETA_AJUSTE: Record<AjusteSaldo["tipo"], string> = {
+  DESCANSO: "Compensadas con descanso",
+  NOMINA: "Pagadas en nómina",
+  REGULARIZACION: "Regularización",
+};
+
+const conSigno = (min: number) =>
+  min === 0 ? "0 h 00 min" : `${min > 0 ? "+" : "-"}${minutosAHoras(Math.abs(min))}`;
+
 type Semana = {
   label: string;
   dias: Dia[];
   totalMin: number;
+  objetivoMin: number; // horas que tocaban (sin días libres, vacaciones, bajas ni festivos)
   parcial: boolean; // la semana continúa en el mes anterior o siguiente
+  fin: string; // domingo (YYYY-MM-DD)
 };
 
 /* =======================
@@ -63,6 +94,26 @@ type Semana = {
 const formatearMes = (mes: string) => {
   const { y, m } = parseISO(`${mes}-01`);
   return etiquetaMes(y, m);
+};
+
+const aMin = (h: string) => {
+  const [hh, mm] = h.split(":").map(Number);
+  return (hh || 0) * 60 + (mm || 0);
+};
+
+type Tramo = { entrada: string; salida: string | null };
+
+const construirTramos = (fichajes: Fichaje[]): Tramo[] => {
+  const ordenados = [...fichajes].sort((a, b) => a.hora.localeCompare(b.hora));
+  const tramos: Tramo[] = [];
+  ordenados.forEach((f) => {
+    if (f.tipo === "ENTRADA") {
+      tramos.push({ entrada: f.hora, salida: null });
+    } else if (tramos.length > 0 && tramos[tramos.length - 1].salida === null) {
+      tramos[tramos.length - 1].salida = f.hora;
+    }
+  });
+  return tramos;
 };
 
 /* =======================
@@ -75,6 +126,24 @@ export default function HistorialHorario() {
   const [error, setError] = useState(false);
   const [intento, setIntento] = useState(0);
   const [openDay, setOpenDay] = useState<string | null>(null);
+  const [saldo, setSaldo] = useState<Saldo | null>(null);
+  const [verAjustes, setVerAjustes] = useState(false);
+
+  // Bolsa de horas (no bloquea la pantalla si falla)
+  useEffect(() => {
+    let cancelado = false;
+    api
+      .get("/horario/saldo", { params: { mes: mesActual } })
+      .then((res) => {
+        if (!cancelado) setSaldo(res.data);
+      })
+      .catch(() => {
+        if (!cancelado) setSaldo(null);
+      });
+    return () => {
+      cancelado = true;
+    };
+  }, [intento, mesActual]);
 
   useEffect(() => {
     let cancelado = false;
@@ -110,43 +179,49 @@ export default function HistorialHorario() {
   const siguienteBloqueado = esMesFuturo(sumarMes(mesActual, 1));
 
   const botonMes =
-    "flex h-10 w-10 items-center justify-center rounded-full border border-slate-200/80 bg-white text-slate-600 shadow-sm transition";
+    "flex h-10 w-10 items-center justify-center rounded-full bg-[#f1f3f8] text-slate-600 transition";
 
   const cabecera = (
-    <div className="flex items-center justify-between gap-3">
-      <button
-        type="button"
-        onClick={() => setMesActual(sumarMes(mesActual, -1))}
-        aria-label="Mes anterior"
-        className={`${botonMes} cursor-pointer hover:bg-[#eef1fa] hover:text-[#2f5bd3] active:scale-95`}
-      >
-        <ChevronLeft size={20} />
-      </button>
-
-      <h1 className="text-center text-xl font-bold capitalize tracking-tight text-slate-900 sm:text-2xl">
-        Historial · {formatearMes(mesActual)}
+    <div className="space-y-4">
+      <h1 className="text-[1.65rem] font-bold tracking-tight text-slate-900">
+        Historial
       </h1>
 
-      <button
-        type="button"
-        onClick={() => setMesActual(sumarMes(mesActual, 1))}
-        disabled={siguienteBloqueado}
-        aria-label="Mes siguiente"
-        className={`${botonMes} ${
-          siguienteBloqueado
-            ? "cursor-not-allowed opacity-40"
-            : "cursor-pointer hover:bg-[#eef1fa] hover:text-[#2f5bd3] active:scale-95"
-        }`}
-      >
-        <ChevronRight size={20} />
-      </button>
+      <div className="flex items-center justify-between gap-2 rounded-full bg-white p-1.5 shadow-[0_10px_28px_-18px_rgba(29,36,51,0.25)] ring-1 ring-slate-200/70">
+        <button
+          type="button"
+          onClick={() => setMesActual(sumarMes(mesActual, -1))}
+          aria-label="Mes anterior"
+          className={`${botonMes} cursor-pointer hover:bg-[#eef1fa] hover:text-[#2f5bd3] active:scale-95`}
+        >
+          <ChevronLeft size={20} />
+        </button>
+
+        <span className="text-center text-base font-semibold capitalize text-slate-900">
+          {formatearMes(mesActual)}
+        </span>
+
+        <button
+          type="button"
+          onClick={() => setMesActual(sumarMes(mesActual, 1))}
+          disabled={siguienteBloqueado}
+          aria-label="Mes siguiente"
+          className={`${botonMes} ${
+            siguienteBloqueado
+              ? "cursor-not-allowed opacity-40"
+              : "cursor-pointer hover:bg-[#eef1fa] hover:text-[#2f5bd3] active:scale-95"
+          }`}
+        >
+          <ChevronRight size={20} />
+        </button>
+      </div>
     </div>
   );
 
   /* ---------- Carga inicial ---------- */
   if (loading && !data) {
     return (
-      <div className="min-h-screen bg-[#f1f3f8] px-4 py-6">
+      <div className="min-h-screen bg-[#f1f3f8] py-6">
         <div className="mx-auto max-w-3xl space-y-6">
           {cabecera}
           <div className="flex items-center justify-center gap-2 py-20 text-slate-400">
@@ -161,7 +236,7 @@ export default function HistorialHorario() {
   /* ---------- Error / sin datos ---------- */
   if (!data) {
     return (
-      <div className="min-h-screen bg-[#f1f3f8] px-4 py-6">
+      <div className="min-h-screen bg-[#f1f3f8] py-6">
         <div className="mx-auto max-w-3xl space-y-6">
           {cabecera}
           <div className="flex flex-col items-center gap-3 rounded-3xl border border-slate-200/70 bg-white px-6 py-14 text-center shadow-[0_14px_34px_-20px_rgba(29,36,51,0.25)]">
@@ -228,12 +303,23 @@ export default function HistorialHorario() {
         )}`,
         dias: [],
         totalMin: 0,
+        objetivoMin: 0,
         parcial: lunes < primerDiaMes || domingo > ultimoDiaMes,
+        fin: domingo,
       };
     }
 
     semanas[lunes].dias.push(dia);
     semanas[lunes].totalMin += dia.minutosTrabajados ?? 0;
+
+    // Solo cuenta como día a cumplir si es laborable y no tiene estado
+    if (!dia.estado && !esFinDeSemana(dia.fecha)) {
+      semanas[lunes].objetivoMin += minutosContratoSemana / 5;
+    }
+  });
+
+  const hoyISO = new Date().toLocaleDateString("sv-SE", {
+    timeZone: "Europe/Madrid",
   });
 
   const listaSemanas = Object.entries(semanas)
@@ -242,31 +328,122 @@ export default function HistorialHorario() {
     .filter((semana) => semana.totalMin > 0);
 
   return (
-    <div className="min-h-screen bg-[#f1f3f8] px-4 py-6">
+    <div className="min-h-screen bg-[#f1f3f8] py-6">
       <div className="mx-auto max-w-3xl space-y-6">
         {cabecera}
 
         {/* RESUMEN DEL MES */}
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-          <Resumen
-            icono={<CalendarDays size={21} />}
-            estilo="bg-emerald-50 text-emerald-600"
-            titulo="Días trabajados"
-            valor={String(diasTrabajados)}
-          />
-          <Resumen
-            icono={<Clock size={21} />}
-            estilo="bg-[#e3eafb] text-[#2f5bd3]"
-            titulo="Horas trabajadas"
-            valor={minutosAHoras(totalMinutosMes)}
-          />
-          <Resumen
-            icono={<Timer size={21} />}
-            estilo="bg-violet-50 text-violet-600"
-            titulo="Media por día"
-            valor={diasTrabajados > 0 ? minutosAHoras(mediaDiaria) : "—"}
-          />
+        <div className="rounded-3xl bg-gradient-to-br from-[#2f5bd3] to-[#6d5be0] p-5 text-white shadow-[0_18px_36px_-18px_rgba(47,91,211,0.7)]">
+          <div className="text-xs font-semibold uppercase tracking-wider text-white/75">
+            Horas trabajadas
+          </div>
+          <div className="mt-1 text-4xl font-bold tabular-nums tracking-tight">
+            {minutosAHoras(totalMinutosMes)}
+          </div>
+
+          <div className="mt-4 grid grid-cols-2 gap-3">
+            <div className="rounded-2xl bg-white/15 px-3.5 py-2.5">
+              <div className="flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wider text-white/75">
+                <CalendarDays size={13} /> Días
+              </div>
+              <div className="mt-0.5 text-lg font-bold">{diasTrabajados}</div>
+            </div>
+            <div className="rounded-2xl bg-white/15 px-3.5 py-2.5">
+              <div className="flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wider text-white/75">
+                <Timer size={13} /> Media por día
+              </div>
+              <div className="mt-0.5 text-lg font-bold">
+                {diasTrabajados > 0 ? minutosAHoras(mediaDiaria) : "—"}
+              </div>
+            </div>
+          </div>
         </div>
+
+        {/* BOLSA DE HORAS */}
+        {saldo && !saldo.esMesFuturo && (
+          <div className="rounded-3xl border border-slate-200/70 bg-white p-4 shadow-[0_10px_28px_-18px_rgba(29,36,51,0.22)]">
+            <div className="flex items-center justify-between gap-3">
+              <div>
+                <div className="text-xs font-semibold uppercase tracking-wider text-slate-500">
+                  Bolsa de horas
+                </div>
+                <div
+                  className={`text-2xl font-bold ${
+                    saldo.confirmadoMinutos > 0
+                      ? "text-emerald-600"
+                      : saldo.confirmadoMinutos < 0
+                      ? "text-red-600"
+                      : "text-slate-900"
+                  }`}
+                >
+                  {conSigno(saldo.confirmadoMinutos)}
+                </div>
+                <div className="text-xs text-slate-500">
+                  {saldo.confirmadoMinutos > 0
+                    ? "A tu favor"
+                    : saldo.confirmadoMinutos < 0
+                    ? "Pendientes de recuperar"
+                    : "Estás al día"}
+                  {saldo.esMesActual
+                    ? " · meses cerrados"
+                    : " · al cierre del mes"}
+                </div>
+                <div className="text-xs text-slate-500">
+                  Del mes anterior {conSigno(saldo.aperturaMinutos)} · Este mes{" "}
+                  {conSigno(saldo.mesMinutos + saldo.ajustesMesMinutos)}
+                  {saldo.esMesActual ? " (en curso)" : ""}
+                </div>
+              </div>
+
+              {saldo.ajustes.some((a) => a.fecha.slice(0, 7) === mesActual) && (
+                <button
+                  type="button"
+                  onClick={() => setVerAjustes((v) => !v)}
+                  aria-expanded={verAjustes}
+                  className="flex cursor-pointer items-center gap-1 rounded-full bg-[#eef1fa] px-3 py-1.5 text-xs font-semibold text-[#2f5bd3]"
+                >
+                  Detalle
+                  <ChevronDown
+                    size={14}
+                    className={`transition-transform ${
+                      verAjustes ? "rotate-180" : ""
+                    }`}
+                  />
+                </button>
+              )}
+            </div>
+
+            {verAjustes && (
+              <ul className="mt-3 divide-y divide-slate-100 border-t border-slate-100">
+                {saldo.ajustes
+                  .filter((a) => a.fecha.slice(0, 7) === mesActual)
+                  .map((a) => (
+                  <li
+                    key={a.id}
+                    className="flex items-center justify-between gap-3 py-2 text-sm"
+                  >
+                    <div className="min-w-0">
+                      <div className="font-semibold text-slate-800">
+                        {ETIQUETA_AJUSTE[a.tipo]}
+                      </div>
+                      <div className="truncate text-xs text-slate-500">
+                        {formatFechaES(a.fecha)}
+                        {a.comentario ? ` · ${a.comentario}` : ""}
+                      </div>
+                    </div>
+                    <span
+                      className={`shrink-0 font-bold ${
+                        a.minutos < 0 ? "text-red-600" : "text-emerald-600"
+                      }`}
+                    >
+                      {conSigno(a.minutos)}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+        )}
 
         {/* SEMANAS */}
         <div
@@ -281,11 +458,14 @@ export default function HistorialHorario() {
           )}
 
           {listaSemanas.map((semana) => {
-            const hayContrato = minutosContratoSemana > 0;
-            const diff = semana.totalMin - minutosContratoSemana;
-            const mostrarDiff = hayContrato && !semana.parcial;
+            const objetivoSemana = semana.objetivoMin;
+            const hayContrato = objetivoSemana > 0;
+            const diff = semana.totalMin - objetivoSemana;
+            const cerrada = semana.fin < hoyISO;
+            const mostrarDiff = hayContrato && !semana.parcial && cerrada;
+            const mostrarProgreso = hayContrato && !semana.parcial;
             const porcentaje = hayContrato
-              ? Math.min(100, (semana.totalMin / minutosContratoSemana) * 100)
+              ? Math.min(100, (semana.totalMin / objetivoSemana) * 100)
               : 0;
 
             return (
@@ -294,56 +474,47 @@ export default function HistorialHorario() {
                 className="space-y-3 rounded-3xl border border-slate-200/70 bg-white p-4 shadow-[0_14px_34px_-20px_rgba(29,36,51,0.25)] sm:p-5"
               >
                 {/* CABECERA SEMANA */}
-                <div className="rounded-2xl bg-[#f5f7fc] px-4 py-3">
-                  <div className="flex flex-wrap items-center justify-between gap-2">
-                    <div className="text-sm font-semibold text-slate-800">
+                <div className="px-1 pb-1">
+                  <div className="flex items-baseline justify-between gap-3">
+                    <div className="text-sm font-semibold text-slate-600">
                       {semana.label}
                     </div>
-
-                    {semana.parcial && (
-                      <span
-                        title="Esta semana continúa en otro mes, por eso no se compara con el contrato."
-                        className="rounded-full bg-white px-2.5 py-0.5 text-[11px] font-semibold text-slate-500 ring-1 ring-slate-200"
-                      >
-                        Semana parcial
-                      </span>
-                    )}
+                    <div className="text-lg font-bold text-slate-900">
+                      {minutosAHoras(semana.totalMin)}
+                    </div>
                   </div>
 
-                  <div className="mt-1.5 flex items-center justify-between text-sm text-slate-600">
-                    <span>
-                      Horas trabajadas:{" "}
-                      <span className="font-semibold text-slate-900">
-                        {minutosAHoras(semana.totalMin)}
-                      </span>
-                    </span>
+                  {mostrarProgreso && (
+                    <div className="mt-2 flex items-center gap-3">
+                      <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-[#e6eaf5]">
+                        <div
+                          className={`h-full rounded-full transition-all ${
+                            mostrarDiff && diff >= 0
+                              ? "bg-emerald-500"
+                              : "bg-gradient-to-r from-[#2f5bd3] to-[#5b8def]"
+                          }`}
+                          style={{ width: `${porcentaje}%` }}
+                        />
+                      </div>
 
-                    {mostrarDiff && (
-                      <span
-                        className={`rounded-full px-2.5 py-0.5 text-xs font-semibold ${
-                          diff > 0
-                            ? "bg-emerald-50 text-emerald-700"
-                            : diff < 0
-                            ? "bg-red-50 text-red-700"
-                            : "bg-slate-100 text-slate-500"
-                        }`}
-                      >
-                        {diff > 0 ? "+" : diff < 0 ? "-" : ""}
-                        {minutosAHoras(Math.abs(diff))}
-                      </span>
-                    )}
-                  </div>
-
-                  {mostrarDiff && (
-                    <div className="mt-2.5 h-1.5 overflow-hidden rounded-full bg-[#e6eaf5]">
-                      <div
-                        className={`h-full rounded-full transition-all ${
-                          diff >= 0
-                            ? "bg-emerald-500"
-                            : "bg-gradient-to-r from-[#2f5bd3] to-[#5b8def]"
-                        }`}
-                        style={{ width: `${porcentaje}%` }}
-                      />
+                      {mostrarDiff ? (
+                        <span
+                          className={`shrink-0 rounded-full px-2.5 py-0.5 text-xs font-semibold ${
+                            diff > 0
+                              ? "bg-emerald-50 text-emerald-700"
+                              : diff < 0
+                              ? "bg-red-50 text-red-700"
+                              : "bg-slate-100 text-slate-500"
+                          }`}
+                        >
+                          {diff > 0 ? "+" : diff < 0 ? "-" : ""}
+                          {minutosAHoras(Math.abs(diff))}
+                        </span>
+                      ) : (
+                        <span className="shrink-0 text-xs font-medium text-slate-500">
+                          de {minutosAHoras(objetivoSemana)}
+                        </span>
+                      )}
                     </div>
                   )}
                 </div>
@@ -354,9 +525,7 @@ export default function HistorialHorario() {
                   .map((dia) => {
                     const abierto = openDay === dia.fecha;
 
-                    const fichajesOrdenados = [...(dia.fichajes ?? [])].sort(
-                      (a, b) => a.hora.localeCompare(b.hora)
-                    );
+                    const tramos = construirTramos(dia.fichajes ?? []);
 
                     return (
                       <div
@@ -412,38 +581,44 @@ export default function HistorialHorario() {
                         </button>
 
                         {abierto && (
-                          <div className="space-y-2 border-t border-[#dbe4f8] px-4 pb-4 pt-3">
-                            {fichajesOrdenados.length === 0 && (
+                          <div className="border-t border-[#dbe4f8] px-4 pb-4 pt-3">
+                            {tramos.length === 0 && (
                               <p className="text-sm text-slate-500">
                                 Sin fichajes registrados.
                               </p>
                             )}
 
-                            {fichajesOrdenados.map((f, i) => (
-                              <div
-                                key={i}
-                                className="flex items-center justify-between text-sm"
-                              >
-                                <span
-                                  className={`flex items-center gap-2 rounded-full px-2.5 py-0.5 text-xs font-semibold ${
-                                    f.tipo === "ENTRADA"
-                                      ? "bg-emerald-50 text-emerald-700"
-                                      : "bg-[#e3eafb] text-[#2f5bd3]"
-                                  }`}
-                                >
-                                  {f.tipo === "ENTRADA" ? (
-                                    <LogIn size={13} />
-                                  ) : (
-                                    <LogOut size={13} />
-                                  )}
-                                  {f.tipo === "ENTRADA" ? "Entrada" : "Salida"}
-                                </span>
-
-                                <span className="font-semibold text-slate-800">
-                                  {f.hora}
-                                </span>
-                              </div>
-                            ))}
+                            <ol className="space-y-3">
+                              {tramos.map((t, i) => {
+                                const dur =
+                                  t.salida !== null
+                                    ? Math.max(0, aMin(t.salida) - aMin(t.entrada))
+                                    : null;
+                                return (
+                                  <li key={i} className="flex items-start gap-3">
+                                    <span className="mt-0.5 grid h-6 w-6 shrink-0 place-items-center rounded-full bg-emerald-500 text-white">
+                                      <Check size={14} strokeWidth={3} />
+                                    </span>
+                                    <div className="flex-1">
+                                      <div className="flex items-center justify-between">
+                                        <span className="text-sm font-semibold text-slate-900">
+                                          {t.entrada} –{" "}
+                                          {t.salida ?? "en curso"}
+                                        </span>
+                                        {dur !== null && (
+                                          <span className="rounded-full bg-[#e3eafb] px-2.5 py-0.5 text-xs font-semibold text-[#2f5bd3]">
+                                            {minutosAHoras(dur)}
+                                          </span>
+                                        )}
+                                      </div>
+                                      <div className="text-xs text-slate-500">
+                                        Entrada · {t.salida ? "Salida" : "sin salida"}
+                                      </div>
+                                    </div>
+                                  </li>
+                                );
+                              })}
+                            </ol>
                           </div>
                         )}
                       </div>
@@ -452,36 +627,6 @@ export default function HistorialHorario() {
               </section>
             );
           })}
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function Resumen({
-  icono,
-  estilo,
-  titulo,
-  valor,
-}: {
-  icono: React.ReactNode;
-  estilo: string;
-  titulo: string;
-  valor: string;
-}) {
-  return (
-    <div className="flex items-center gap-3 rounded-2xl border border-slate-200/70 bg-white p-4 shadow-[0_10px_28px_-18px_rgba(29,36,51,0.22)]">
-      <span
-        className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-xl ${estilo}`}
-      >
-        {icono}
-      </span>
-      <div className="min-w-0">
-        <div className="text-[11px] font-semibold uppercase tracking-wider text-slate-500">
-          {titulo}
-        </div>
-        <div className="truncate text-xl font-bold leading-tight text-slate-900">
-          {valor}
         </div>
       </div>
     </div>

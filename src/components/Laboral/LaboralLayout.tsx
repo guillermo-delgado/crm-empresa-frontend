@@ -11,7 +11,7 @@ export default function LaboralLayout({ children }: Props) {
   const [collapsed, setCollapsed] = useState<boolean>(true);
 
   return (
-    <div className="relative min-h-screen bg-slate-50">
+    <div className="relative min-h-screen bg-[#f1f3f8]">
 
       {/* SIDEBAR DESKTOP */}
       <LaboralSidebar
