@@ -127,7 +127,7 @@ const VACIO = {
   formaPago: "",
   actividad: "",
   observaciones: "",
-  createdBy: "", // crear: texto escrito · editar: id del usuario
+  createdBy: "", // id del usuario asignado
   createdByLabel: "", // texto visible del usuario
   createdAt: "",
 };
@@ -431,16 +431,17 @@ const NuevaVenta = ({
     }
   };
 
-  /* Usuario: al crear se manda el texto; al editar se traduce a id */
+  /* Usuario: al crear y al editar el texto se traduce al id del usuario */
   const cambiarUsuario = (value: string) => {
-    if (esCrear) {
-      setForm((f) => ({ ...f, createdBy: value, createdByLabel: value }));
-      return;
-    }
+    const buscado = value.trim().toLowerCase();
 
-    const u = usuarios.find(
-      (u) => u.nombre === value || u.numma === value || u.email === value
-    );
+    const u = buscado
+      ? usuarios.find((u) =>
+          [u.nombre, u.numma, u.email].some(
+            (campo) => campo && String(campo).trim().toLowerCase() === buscado
+          )
+        )
+      : undefined;
 
     setForm((f) => ({ ...f, createdByLabel: value, createdBy: u ? u._id : "" }));
   };

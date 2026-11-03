@@ -10,6 +10,7 @@ import {
   LogOut,
   BookOpen,
   Gift,
+  Pin,
 } from "lucide-react";
 import api from "../services/api";
 
@@ -124,6 +125,14 @@ export default function Sidebar({
             to="/crm/nueva-venta"
             label="Nueva venta"
             icon={<PlusCircle size={19} strokeWidth={1.6} />}
+            collapsed={collapsed}
+          />
+
+          {/* 📌 AGENDA (notas, llamadas y avisos) */}
+          <Item
+            to="/crm/agenda"
+            label="Agenda"
+            icon={<Pin size={19} strokeWidth={1.6} />}
             collapsed={collapsed}
           />
 

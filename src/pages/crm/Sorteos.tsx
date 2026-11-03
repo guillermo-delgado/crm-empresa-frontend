@@ -12,13 +12,17 @@ type Participante = {
 type Ganador = { tomador?: string; numeroPoliza?: string; ramo?: string; [key: string]: unknown };
 type Sorteo = {
   _id: string; nombre: string; descripcion?: string;
-  fechaInicio: string; fechaFin: string; imagenUrl?: string; criterioFecha: "REGISTRO" | "EFECTO";
+  fechaInicio: string; fechaFin: string; imagenUrl?: string; criterioFecha: Criterio;
   ramos: Ramo[]; participantes: Participante[]; ganadores: Ganador[];
   estado: "CONFIGURACION" | "ABIERTO" | "REALIZADO";
   fechaRealizacion?: string; createdAt?: string;
   auditoria?: { metodo?: string; totalParticipaciones?: number; huellaSHA256?: string };
   historialResultados?: { _id?: string; ganador: Ganador; fecha: string; motivo?: string; tipo: "INICIAL" | "REPETICION" }[];
 };
+/** AMBAS: entra la póliza si su fecha de efecto o su fecha de venta cae en el periodo (sin repetir pólizas). */
+type Criterio = "REGISTRO" | "EFECTO" | "AMBAS";
+const CRITERIO_LABEL: Record<Criterio, string> = { EFECTO: "fecha de efecto", REGISTRO: "fecha de venta", AMBAS: "fecha de efecto y de venta" };
+const criterioOptions = <><option value="EFECTO">Fecha de efecto</option><option value="REGISTRO">Fecha de venta</option><option value="AMBAS">Fecha de efecto y de venta</option></>;
 type View = "overview" | "detail" | "create";
 type Tab = "participantes" | "resultado" | "configuracion";
 
@@ -97,7 +101,7 @@ const ramosParaEditar = (guardados: Ramo[]): Ramo[] => {
 };
 const emptyForm = () => ({
   nombre: "", descripcion: "", fechaInicio: "", fechaFin: "", imagenUrl: "",
-  criterioFecha: "EFECTO" as "EFECTO" | "REGISTRO", ramos: RAMOS_DEFAULT.map(r => ({ ...r })),
+  criterioFecha: "EFECTO" as Criterio, ramos: RAMOS_DEFAULT.map(r => ({ ...r })),
 });
 
 function WinnerCard({ g, fechaSorteo, prueba }: { g: Ganador; fechaSorteo?: string; prueba?: boolean }) {
@@ -156,6 +160,8 @@ export default function Sorteos() {
   const [buscandoVentas, setBuscandoVentas] = useState(false);
   const [resultadosVentas, setResultadosVentas] = useState<any[] | null>(null);
   const [manualNumber, setManualNumber] = useState("");
+  const [manualSaldo, setManualSaldo] = useState("");
+  const [manualPart, setManualPart] = useState("");
   const [importOpen, setImportOpen] = useState(false);
   const [draw, setDraw] = useState<null | { phase: "roll" | "done"; name: string; prueba?: boolean; ganador?: Participante }>(null);
 
@@ -200,8 +206,8 @@ export default function Sorteos() {
       meses.push({ month: d.getMonth() + 1, year: d.getFullYear() });
     }
     try {
-      const modoFecha = s.criterioFecha === "REGISTRO" ? "venta" : "efecto";
-      const respuestas = await Promise.all(meses.map(m => api.get("/ventas/libro", { params: { ...m, modoFecha } })));
+      const modos = s.criterioFecha === "AMBAS" ? ["efecto", "venta"] : [s.criterioFecha === "REGISTRO" ? "venta" : "efecto"];
+      const respuestas = await Promise.all(modos.flatMap(modoFecha => meses.map(m => api.get("/ventas/libro", { params: { ...m, modoFecha } }))));
       const anuladas = new Set<string>();
       respuestas.forEach(r => (Array.isArray(r.data?.ventas) ? r.data.ventas : []).forEach((v: any) => {
         if (v.anulada || v.estado === "ANULADA") anuladas.add(String(v.numeroPoliza));
@@ -369,14 +375,28 @@ export default function Sorteos() {
     finally { setBusy(false); }
   };
 
-  const agregarManual = async (numero: string = manualNumber) => {
-    const num = numero.trim();
+  /** Sin número: usa el formulario (nº, saldo y participaciones). Con número: añade esa venta del buscador. */
+  const agregarManual = async (numero?: string) => {
+    const desdeFormulario = numero === undefined;
+    const num = (numero ?? manualNumber).trim();
     if (!actual?._id || !num) return;
+    const body: Record<string, unknown> = { numeroPoliza: num };
+    if (desdeFormulario && manualPart.trim()) {
+      const n = Number(manualPart.trim());
+      if (!Number.isInteger(n) || n < 1 || n > 1000) { setNotice("Indica un número entero de participaciones entre 1 y 1000."); return; }
+      body.participaciones = n;
+      if (manualSaldo.trim()) {
+        const saldo = Number(manualSaldo.trim().replace(",", "."));
+        if (!Number.isFinite(saldo) || saldo < 0) { setNotice("Indica un saldo válido (0 o más)."); return; }
+        body.saldo = saldo;
+      }
+    }
     setBusy(true); setNotice("");
     try {
-      await api.post(`${API}/${actual._id}/participantes`, { numeroPoliza: num });
+      await api.post(`${API}/${actual._id}/participantes`, body);
       guardarExcluidas(actual._id, leerExcluidas(actual._id).filter(n => n !== num));
-      setManualNumber(""); setResultadosVentas(prev => prev && prev.filter(v => String(v.numeroPoliza).trim() !== num));
+      if (desdeFormulario) { setManualNumber(""); setManualSaldo(""); setManualPart(""); }
+      setResultadosVentas(prev => prev && prev.filter(v => String(v.numeroPoliza).trim() !== num));
       await abrirSorteo(actual._id); setNotice("Póliza añadida al sorteo."); await cargarLista();
     } catch (e) { setNotice(errorText(e)); }
     finally { setBusy(false); }
@@ -524,8 +544,8 @@ export default function Sorteos() {
   const participantes = useMemo(() => actual?.participantes || [], [actual]);
   const exportar = () => {
     if (!actual) return;
-    const rows: (string | number)[][] = [["Póliza", "Tomador", "Ramo", "Aseguradora", "Fecha efecto", "Participaciones"],
-      ...participantes.map(p => [p.numeroPoliza, p.tomador, p.ramo, p.aseguradora || "", fechaInput(p.fechaEfecto), p.participaciones])];
+    const rows: (string | number)[][] = [["Póliza", "Tomador", "Ramo", "Aseguradora", "Fecha efecto", "Saldo", "Participaciones", "Origen"],
+      ...participantes.map(p => [p.numeroPoliza, p.tomador, p.ramo, p.aseguradora || "", fechaInput(p.fechaEfecto), Number(p.primaNeta) || 0, p.participaciones, p.origen === "MANUAL" ? "Manual" : "Importación"])];
     const csv = rows.map(r => r.map(c => `"${String(c ?? "").replace(/"/g, '""')}"`).join(";")).join("\n");
     const a = document.createElement("a");
     a.href = URL.createObjectURL(new Blob(["\ufeff" + csv], { type: "text/csv;charset=utf-8" }));
@@ -583,11 +603,13 @@ export default function Sorteos() {
     const bins = Array.from({ length: Math.ceil(dias / size) }, (_, i) => ({
       label: new Date(ini.getTime() + i * size * DAY).toLocaleDateString("es-ES", { day: "2-digit", month: "2-digit" }), n: 0,
     }));
+    const tramoDe = (raw?: string) => raw ? Math.floor((new Date(`${fechaInput(raw)}T12:00:00`).getTime() - ini.getTime()) / DAY / size) : -1;
+    const dentro = (i: number) => i >= 0 && i < bins.length;
     participantes.forEach(p => {
-      const raw = actual.criterioFecha === "REGISTRO" ? p.fechaRegistro : p.fechaEfecto;
-      if (!raw) return;
-      const i = Math.floor((new Date(`${fechaInput(raw)}T12:00:00`).getTime() - ini.getTime()) / DAY / size);
-      if (i >= 0 && i < bins.length) bins[i].n++;
+      let i = tramoDe(actual.criterioFecha === "REGISTRO" ? p.fechaRegistro : p.fechaEfecto);
+      // Con ambas fechas, si la de efecto cae fuera del periodo, la póliza entró por su fecha de venta.
+      if (actual.criterioFecha === "AMBAS" && !dentro(i)) i = tramoDe(p.fechaRegistro);
+      if (dentro(i)) bins[i].n++;
     });
     return { size, bins };
   }, [actual, participantes]);
@@ -832,7 +854,7 @@ export default function Sorteos() {
         <div className="sr-full"><label className="sr-label">Descripción <span className="sr-muted">(opcional)</span></label><input className="sr-field" value={form.descripcion} onChange={e => updateForm("descripcion", e.target.value)} placeholder="Añade una breve descripción" /></div>
         <div><label className="sr-label">Fecha desde *</label><input type="date" className="sr-field" value={form.fechaInicio} onChange={e => updateForm("fechaInicio", e.target.value)} /></div>
         <div><label className="sr-label">Fecha hasta *</label><input type="date" className="sr-field" value={form.fechaFin} onChange={e => updateForm("fechaFin", e.target.value)} /></div>
-        <div className="sr-full"><label className="sr-label">Criterio para seleccionar pólizas</label><select className="sr-field" value={form.criterioFecha} onChange={e => updateForm("criterioFecha", e.target.value)}><option value="EFECTO">Fecha de efecto</option><option value="REGISTRO">Fecha de registro</option></select></div>
+        <div className="sr-full"><label className="sr-label">Criterio para seleccionar pólizas</label><select className="sr-field" value={form.criterioFecha} onChange={e => updateForm("criterioFecha", e.target.value)}>{criterioOptions}</select></div>
       </div></section>
       <section className="sr-panel sr-form-card"><h2 className="sr-form-title">Participaciones por ramo</h2><p className="sr-section-note" style={{ marginTop: -8, marginBottom: 14 }}>Activa los ramos que entran en el sorteo y define cuántas participaciones aporta cada póliza.</p>{ramosEditor(false)}</section>
       <div className="sr-actions"><button className="sr-btn" onClick={() => setView("overview")}>Cancelar</button><button className="sr-btn primary" disabled={busy} onClick={() => void guardar()}>{busy ? "Guardando…" : "Guardar y continuar"}</button></div>
@@ -847,7 +869,7 @@ export default function Sorteos() {
         </button>
         <div className="sr-ban-main">
           <div className="sr-row" style={{ gap: 12 }}><h1 className="sr-detail-title">{actual.nombre}</h1><span className={`sr-status st-${actual.estado}`}>{estadoLabel[actual.estado]}</span></div>
-          <div className="sr-sub">Del {fecha(actual.fechaInicio)} al {fecha(actual.fechaFin)} · Pólizas por {actual.criterioFecha === "EFECTO" ? "fecha de efecto" : "fecha de registro"} · Creado el {fecha(actual.createdAt)}</div>
+          <div className="sr-sub">Del {fecha(actual.fechaInicio)} al {fecha(actual.fechaFin)} · Pólizas por {CRITERIO_LABEL[actual.criterioFecha] || "fecha de efecto"} · Creado el {fecha(actual.createdAt)}</div>
           {actual.descripcion && <div className="sr-sub" style={{ marginTop: 3 }}>{actual.descripcion}</div>}
           {puedeEditar && <div className="sr-sub" style={{ marginTop: 3 }}>Las pólizas nuevas del periodo se añaden solas, sin importarlas a mano.</div>}
         </div>
@@ -859,7 +881,7 @@ export default function Sorteos() {
 
       {importOpen && puedeEditar && <section className="sr-panel sr-form-card"><div className="sr-section-head"><div><h2 className="sr-section-title">Importar pólizas desde ventas</h2><div className="sr-section-note">Se añaden las pólizas activas que cumplan el criterio. Las duplicadas se omiten.</div></div><button className="sr-btn" onClick={() => setImportOpen(false)}>Cerrar</button></div>
         <div className="sr-form-grid"><div><label className="sr-label">Fecha desde</label><input type="date" className="sr-field" value={form.fechaInicio} onChange={e => updateForm("fechaInicio", e.target.value)} /></div><div><label className="sr-label">Fecha hasta</label><input type="date" className="sr-field" value={form.fechaFin} onChange={e => updateForm("fechaFin", e.target.value)} /></div>
-          <div className="sr-full"><label className="sr-label">Criterio</label><select className="sr-field" value={form.criterioFecha} onChange={e => updateForm("criterioFecha", e.target.value)}><option value="EFECTO">Fecha de efecto</option><option value="REGISTRO">Fecha de registro</option></select></div></div>
+          <div className="sr-full"><label className="sr-label">Criterio</label><select className="sr-field" value={form.criterioFecha} onChange={e => updateForm("criterioFecha", e.target.value)}>{criterioOptions}</select></div></div>
         <div className="sr-actions"><span className="sr-muted" style={{ fontSize: 12 }}>Las fechas se aplican solo a esta importación.</span><button className="sr-btn primary" disabled={busy} onClick={() => void importar()}>{busy ? "Importando…" : "Iniciar importación"}</button></div></section>}
 
       <div className="sr-kpis">{kpis.map(([icon, label, value, nota, tone]) =>
@@ -878,7 +900,7 @@ export default function Sorteos() {
             <div className="sr-leg">{donut.items.map(it => <div key={it.name}><i style={{ background: it.color }} />{it.name}<b>{it.value}</b></div>)}</div>
           </div> : <div className="sr-chart-empty">Importa pólizas para ver el reparto por ramo.</div>}
         </div>
-        <div className="sr-panel sr-chart-card"><h2 className="sr-chart-title">Pólizas por {tramos.size === 7 ? "semana" : "tramo"} de {actual.criterioFecha === "EFECTO" ? "efecto" : "registro"}</h2>
+        <div className="sr-panel sr-chart-card"><h2 className="sr-chart-title">Pólizas por {tramos.size === 7 ? "semana" : "tramo"} de {actual.criterioFecha === "REGISTRO" ? "venta" : actual.criterioFecha === "AMBAS" ? "efecto o venta" : "efecto"}</h2>
           {participantes.length && tramos.bins.length ? <div className="sr-cbars">{tramos.bins.map(b =>
             <div key={b.label}><span>{b.n}</span><i className={b.n === maxBin ? "top" : ""} style={{ height: b.n ? Math.max(4, Math.round(b.n / maxBin * 76)) : 2 }} />{b.label}</div>)}</div>
             : <div className="sr-chart-empty">Aún no hay pólizas en el periodo.</div>}
@@ -900,16 +922,18 @@ export default function Sorteos() {
             <select aria-label="Filtrar por ramo" className="sr-select" value={ramoFilter} onChange={e => { setRamoFilter(e.target.value); setPagina(0); }}><option value="TODOS">Ramo: todos</option>{Array.from(new Set(participantes.map(p => p.ramo))).filter(Boolean).map(r => <option key={r} value={r}>{r}</option>)}</select>
             <select aria-label="Filtrar por origen" className="sr-select" value={origenFilter} onChange={e => { setOrigenFilter(e.target.value); setPagina(0); }}><option value="TODOS">Origen: todos</option><option value="IMPORTACION">Importación</option><option value="MANUAL">Manual</option></select>
             <span className="sr-grow" />
-            {puedeEditar && <><input className="sr-field" style={{ width: 170 }} aria-label="Número de póliza" value={manualNumber} onChange={e => setManualNumber(e.target.value)} onKeyDown={e => { if (e.key === "Enter") void agregarManual(); }} placeholder="Nº de póliza" /><button className="sr-btn" disabled={busy || !manualNumber.trim()} onClick={() => void agregarManual()}>Añadir póliza</button></>}
+            {puedeEditar && <><input className="sr-field" style={{ width: 150 }} aria-label="Número de póliza" value={manualNumber} onChange={e => setManualNumber(e.target.value)} onKeyDown={e => { if (e.key === "Enter") void agregarManual(); }} placeholder="Nº de póliza" />
+              <input className="sr-field" style={{ width: 110 }} inputMode="decimal" aria-label="Saldo en euros" title="Saldo de la póliza en euros (opcional)" value={manualSaldo} onChange={e => setManualSaldo(e.target.value)} onKeyDown={e => { if (e.key === "Enter") void agregarManual(); }} placeholder="Saldo €" />
+              <input className="sr-field" style={{ width: 120 }} type="number" min={1} max={1000} aria-label="Participaciones" title="Si lo dejas vacío se calculan por ramo y prima (la póliza debe existir en ventas)" value={manualPart} onChange={e => setManualPart(e.target.value)} onKeyDown={e => { if (e.key === "Enter") void agregarManual(); }} placeholder="Participaciones" /><button className="sr-btn" disabled={busy || !manualNumber.trim()} onClick={() => void agregarManual()}>Añadir póliza</button></>}
             {puedeEditar && <button className="sr-btn" disabled={busy || !participantes.length} onClick={() => void recalcular()}>Recalcular</button>}<button className="sr-btn" disabled={!participantes.length} onClick={exportar}>Exportar CSV</button>
           </div>
           {filteredParticipantes.length === 0 ? <div className="sr-empty"><div className="sr-empty-icon"><Icon n="users" size={26} /></div><strong>{participantes.length ? "Ningún participante coincide" : "Aún no hay participantes"}</strong><span>{participantes.length ? "Cambia los filtros de búsqueda." : "Importa las pólizas del periodo o añade una por su número."}</span></div> :
-            <div className="sr-table-wrap"><table className="sr-table"><thead><tr><th>Tomador</th><th>Ramo</th><th>Fecha efecto</th><th className="r">Part.</th><th>Probabilidad</th><th>Origen</th>{puedeEditar && <th />}</tr></thead><tbody>{visibles.map(p => {
+            <div className="sr-table-wrap"><table className="sr-table"><thead><tr><th>Tomador</th><th>Ramo</th><th>Fecha efecto</th><th className="r">Saldo</th><th className="r">Part.</th><th>Probabilidad</th><th>Origen</th>{puedeEditar && <th />}</tr></thead><tbody>{visibles.map(p => {
               const rs = ramoStyle(p.ramo); const pc = pctOf(p);
               return <tr key={p._id}>
                 <td><div className="sr-who"><span className="sr-av" style={{ background: rs.bg, color: rs.fg }}>{iniciales(p.tomador)}</span><div><b>{p.tomador || "—"}</b><small>{p.numeroPoliza}</small></div></div></td>
                 <td>{p.ramo ? <span className="sr-rm" style={{ background: rs.bg, color: rs.fg }}>{p.ramo}</span> : "—"}</td>
-                <td>{fecha(p.fechaEfecto)}</td><td className="r"><b>{p.participaciones}</b>{Number(p.participacionesExtra) > 0 && <small title={`${Number(p.participaciones) - Number(p.participacionesExtra)} por ramo + ${p.participacionesExtra} por prima (${Math.round(Number(p.primaNeta) || 0)} €)`} style={{ display: "block", color: "#586174" }}>+{p.participacionesExtra} por prima</small>}{esPersonalizada(p) && <small title={`Por su ramo le corresponden ${participacionesDeRamo(p)}${p.participacionesExtra ? ` + ${p.participacionesExtra} por prima` : ""}`} style={{ display: "block", color: "#9a6406", fontWeight: 700 }}>personalizada</small>}{puedeEditar && <button className="sr-q" style={{ marginLeft: 6 }} disabled={busy} title="Cambiar participaciones de esta póliza" aria-label={`Cambiar participaciones de ${p.numeroPoliza}`} onClick={() => void cambiarParticipaciones(p)}>✎</button>}</td>
+                <td>{fecha(p.fechaEfecto)}</td><td className="r">{(Number(p.primaNeta) || 0).toLocaleString("es-ES", { style: "currency", currency: "EUR" })}</td><td className="r"><b>{p.participaciones}</b>{Number(p.participacionesExtra) > 0 && <small title={`${Number(p.participaciones) - Number(p.participacionesExtra)} por ramo + ${p.participacionesExtra} por prima (${Math.round(Number(p.primaNeta) || 0)} €)`} style={{ display: "block", color: "#586174" }}>+{p.participacionesExtra} por prima</small>}{esPersonalizada(p) && <small title={participacionesDeRamo(p) === undefined ? "Participaciones fijadas a mano" : `Por su ramo le corresponden ${participacionesDeRamo(p)}${p.participacionesExtra ? ` + ${p.participacionesExtra} por prima` : ""}`} style={{ display: "block", color: "#9a6406", fontWeight: 700 }}>personalizada</small>}{puedeEditar && <button className="sr-q" style={{ marginLeft: 6 }} disabled={busy} title="Cambiar participaciones de esta póliza" aria-label={`Cambiar participaciones de ${p.numeroPoliza}`} onClick={() => void cambiarParticipaciones(p)}>✎</button>}</td>
                 <td><span className="sr-pr"><s><i style={{ width: `${Math.max(4, pc / maxPct * 100)}%` }} /></s>{pc.toFixed(1).replace(".", ",")} %</span></td>
                 <td className="sr-org">{p.origen === "MANUAL" ? "Manual" : "Importación"}</td>
                 {puedeEditar && <td className="r"><button className="sr-q" disabled={busy} onClick={() => void quitar(p)}>Quitar</button></td>}
@@ -967,7 +991,7 @@ export default function Sorteos() {
           {!esAdmin ? <div className="sr-alert">La configuración es de solo lectura: solo el administrador puede modificarla.</div> : locked && <div className="sr-alert">Este sorteo ya se realizó. La configuración es de solo lectura.</div>}
           <div className="sr-form-grid"><div className="sr-full"><label className="sr-label">Nombre</label><input className="sr-field" value={form.nombre} disabled={!puedeEditar} onChange={e => updateForm("nombre", e.target.value)} /></div><div className="sr-full"><label className="sr-label">Descripción</label><input className="sr-field" value={form.descripcion} disabled={!puedeEditar} onChange={e => updateForm("descripcion", e.target.value)} /></div>
             <div><label className="sr-label">Fecha desde</label><input type="date" className="sr-field" value={form.fechaInicio} disabled={!puedeEditar} onChange={e => updateForm("fechaInicio", e.target.value)} /></div><div><label className="sr-label">Fecha hasta</label><input type="date" className="sr-field" value={form.fechaFin} disabled={!puedeEditar} onChange={e => updateForm("fechaFin", e.target.value)} /></div>
-            <div className="sr-full"><label className="sr-label">Criterio de fecha</label><select className="sr-field" value={form.criterioFecha} disabled={!puedeEditar} onChange={e => updateForm("criterioFecha", e.target.value)}><option value="EFECTO">Fecha de efecto</option><option value="REGISTRO">Fecha de registro</option></select></div></div>
+            <div className="sr-full"><label className="sr-label">Criterio de fecha</label><select className="sr-field" value={form.criterioFecha} disabled={!puedeEditar} onChange={e => updateForm("criterioFecha", e.target.value)}>{criterioOptions}</select></div></div>
           <h3 className="sr-form-title" style={{ marginTop: 24 }}>Participaciones por ramo</h3>{ramosEditor(!puedeEditar)}
           {esAdmin && <div className="sr-actions"><button className="sr-btn danger" disabled={busy} onClick={() => void eliminar()}>Eliminar sorteo</button>{puedeEditar && <button className="sr-btn primary" disabled={busy} onClick={() => void guardar()}>{busy ? "Guardando…" : "Guardar cambios"}</button>}</div>}
         </div>}

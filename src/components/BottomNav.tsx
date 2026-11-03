@@ -7,6 +7,7 @@ import {
   Gift,
   Users,
   CalendarDays,
+  Pin,
 } from "lucide-react";
 
 type Props = {
@@ -49,6 +50,13 @@ export default function BottomNav({ revisionCount = 0 }: Props) {
           to="/crm/nueva-venta"
           label="Nueva"
           icon={<PlusCircle size={20} />}
+        />
+
+        {/* Agenda: notas, llamadas y avisos */}
+        <NavItem
+          to="/crm/agenda"
+          label="Agenda"
+          icon={<Pin size={20} />}
         />
 
         {/* Sorteos: lo ven todos (el empleado en modo lectura) */}

@@ -49,6 +49,7 @@ type Empleado = {
   apellidos?: string;
 };
 
+type TipoDiasVacaciones = "LABORABLES" | "NATURALES";
 type Estado = "VACACIONES" | "DIA_LIBRE" | "BAJA" | "FESTIVO";
 type Turno = "MANANA" | "TARDE" | "MANANA_TARDE";
 
@@ -80,6 +81,7 @@ type RespuestaHorario = {
   minutosTeoricosMes: number;
   horasContratadasSemana: number;
   maxDiasVacaciones: number;
+  tipoDiasVacaciones?: TipoDiasVacaciones;
   diasVacacionesUsados: number;
 };
 
@@ -281,6 +283,13 @@ export default function HorarioCRM() {
 
   /* ---------- selección en masa ---------- */
   const [modoSeleccion, setModoSeleccion] = useState(false);
+  const [panelAbierto, setPanelAbierto] = useState(false);
+  const [tipoDiasVacaciones, setTipoDiasVacaciones] = useState<TipoDiasVacaciones>("NATURALES");
+  const [confirmacion, setConfirmacion] = useState<{
+    texto: string;
+    textoOk?: string;
+    ok: () => void;
+  } | null>(null);
   const [seleccion, setSeleccion] = useState<Set<string>>(new Set());
   const [ultimoClick, setUltimoClick] = useState<string | null>(null);
   const [bulkTurno, setBulkTurno] = useState<Turno | "">("");
@@ -294,6 +303,10 @@ export default function HorarioCRM() {
   const { y: year, m: mes1 } = parseISO(`${mes}-01`);
 
   /* ---------- avisos ---------- */
+  useEffect(() => {
+    if (!modoSeleccion || seleccion.size === 0) setPanelAbierto(false);
+  }, [modoSeleccion, seleccion]);
+
   useEffect(() => {
     if (!aviso) return;
     const t = setTimeout(() => setAviso(null), 4500);
@@ -350,6 +363,7 @@ export default function HorarioCRM() {
       await api.put(`/users/${empleadoId}/config`, {
         horasContratadasSemana,
         maxDiasVacaciones,
+        tipoDiasVacaciones,
       });
       setMostrarConfig(false);
       setAviso({ tipo: "ok", texto: "Configuración guardada" });
@@ -382,6 +396,7 @@ export default function HorarioCRM() {
     if (empleadoId === "ALL") {
       setHorasContratadasSemana(40);
       setMaxDiasVacaciones(30);
+      setTipoDiasVacaciones("NATURALES");
       return;
     }
 
@@ -390,6 +405,9 @@ export default function HorarioCRM() {
       .then((res) => {
         setHorasContratadasSemana(res.data.horasContratadasSemana ?? 40);
         setMaxDiasVacaciones(res.data.maxDiasVacaciones ?? 30);
+        setTipoDiasVacaciones(
+          res.data.tipoDiasVacaciones === "LABORABLES" ? "LABORABLES" : "NATURALES"
+        );
       })
       .catch(() => {
         setHorasContratadasSemana(40);
@@ -436,6 +454,9 @@ export default function HorarioCRM() {
       setHorasTrabajadas(res.data.horasTrabajadas ?? 0);
       setHorasContratadasSemana(res.data.horasContratadasSemana ?? 40);
       setMaxDiasVacaciones(res.data.maxDiasVacaciones ?? 30);
+      setTipoDiasVacaciones(
+        res.data.tipoDiasVacaciones === "LABORABLES" ? "LABORABLES" : "NATURALES"
+      );
       setVacacionesUsadas(res.data.diasVacacionesUsados ?? 0);
       setBalanceMinutos(res.data.balanceMinutos ?? 0);
       setAplicadosMes(res.data.minutosAplicadosMes ?? 0);
@@ -630,7 +651,7 @@ export default function HorarioCRM() {
     setErrorTramos(null);
   };
 
-  const guardarFichajes = async () => {
+  const guardarFichajes = async (forzarVacio = false) => {
     if (!diaActivo || empleadoId === "ALL") return;
 
     const error = validarTramos(tramos);
@@ -655,8 +676,13 @@ export default function HorarioCRM() {
     if (
       nuevos.length === 0 &&
       (diaActivo.fichajes?.length ?? 0) > 0 &&
-      !window.confirm("¿Dejar este día sin ningún fichaje?")
+      !forzarVacio
     ) {
+      setConfirmacion({
+        texto: "¿Dejar este día sin ningún fichaje?",
+        textoOk: "Dejar sin fichajes",
+        ok: () => guardarFichajes(true),
+      });
       return;
     }
 
@@ -743,11 +769,11 @@ export default function HorarioCRM() {
   const aplicarMasivo = async (
     payload: Record<string, unknown>,
     descripcion: string,
-    pedirConfirmacion: boolean
+    pedirConfirmacion: boolean,
+    opciones?: { fechas?: string[]; extra?: string }
   ) => {
-    if (seleccion.size === 0) return;
-
-    const fechas = [...seleccion].sort();
+    const fechas = (opciones?.fechas ?? [...seleccion]).slice().sort();
+    if (fechas.length === 0) return;
 
     if (fechas.length > 62) {
       setAviso({ tipo: "error", texto: "Máximo 62 días por operación" });
@@ -772,19 +798,22 @@ export default function HorarioCRM() {
       }
     }
 
-    if (
-      pedirConfirmacion &&
-      !window.confirm(
-        `${descripcion} ${
-          fechas.length === 1
-            ? "el día seleccionado"
-            : `los ${fechas.length} días seleccionados`
-        } (${textoDestino})?`
-      )
-    ) {
+    if (pedirConfirmacion) {
+      setConfirmacion({
+        texto: `${descripcion} ${
+          fechas.length === 1 ? "el día" : `los ${fechas.length} días`
+        } (${textoDestino})?${opciones?.extra ? ` ${opciones.extra}` : ""}`,
+        ok: () => ejecutarMasivo(payload, fechas),
+      });
       return;
     }
+    ejecutarMasivo(payload, fechas);
+  };
 
+  const ejecutarMasivo = async (
+    payload: Record<string, unknown>,
+    fechas: string[]
+  ) => {
     setGuardandoMasivo(true);
     try {
       await api.post("/crm/horario/dias-masivo", {
@@ -855,6 +884,19 @@ export default function HorarioCRM() {
 
   const offset = huecosIniciales(year, mes1);
 
+  /** Días a los que se aplicarían vacaciones según el modo (laborables salta findes y festivos). */
+  const fechasVac = [...seleccion]
+    .sort()
+    .filter(
+      (f) =>
+        empleadoId === "ALL" ||
+        tipoDiasVacaciones === "NATURALES" ||
+        (!esFinDeSemana(f) &&
+          mapaDias.get(f)?.estado !== "FESTIVO" &&
+          mapaDias.get(f)?.estado !== "BAJA")
+    );
+  const vacOmitidos = seleccion.size - fechasVac.length;
+
   /** Objetivo diario: horas manuales > turno > reparto semanal. */
   const calcularObjetivoDia = (dia: DiaCalendario) => {
     const { horaEntradaManana: em, horaSalidaManana: sm } = dia;
@@ -904,7 +946,7 @@ export default function HorarioCRM() {
      RENDER
   ========================= */
   return (
-    <div className="space-y-6 pb-28">
+    <div className={`space-y-6 ${modoSeleccion ? "pb-44 md:pb-28" : "pb-28"}`}>
       {/* TÍTULO */}
       <div className="flex flex-wrap items-center justify-between gap-3">
         <h1 className="text-[1.65rem] font-bold tracking-tight text-slate-900 flex items-center gap-3">
@@ -1095,7 +1137,13 @@ export default function HorarioCRM() {
           icono={<Plane size={20} />}
           estilo="bg-sky-50 text-sky-600"
           titulo="Máx. vacaciones"
-          valor={empleadoId === "ALL" ? "-" : `${maxDiasVacaciones} días`}
+          valor={
+            empleadoId === "ALL"
+              ? "-"
+              : `${maxDiasVacaciones} días ${
+                  tipoDiasVacaciones === "LABORABLES" ? "laborables" : "naturales"
+                }`
+          }
           tono={
             empleadoId !== "ALL" && vacacionesUsadas > maxDiasVacaciones
               ? "malo"
@@ -1187,7 +1235,7 @@ export default function HorarioCRM() {
 
       {/* CALENDARIO */}
       {!(empleadoId !== "ALL" && mostrarContrato) && (
-      <div className="bg-white rounded-3xl border border-slate-200/70 shadow-[0_14px_34px_-24px_rgba(29,36,51,0.3)] p-5">
+      <div className="bg-white rounded-3xl border border-slate-200/70 shadow-[0_14px_34px_-24px_rgba(29,36,51,0.3)] p-3 sm:p-5">
         <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
           <div className="text-xl font-bold capitalize tracking-tight text-slate-900">
             {etiquetaMes(year, mes1)}
@@ -1209,7 +1257,8 @@ export default function HorarioCRM() {
           </div>
         </div>
 
-        <div className="grid grid-cols-7 gap-2.5 text-center text-sm">
+        <div className="scroll-smooth overflow-x-auto sm:overflow-visible">
+        <div className="grid min-w-[700px] grid-cols-7 gap-2.5 text-center text-sm sm:min-w-0">
           {SEMANA.map((d, i) =>
             modoSeleccion ? (
               <button
@@ -1249,9 +1298,9 @@ export default function HorarioCRM() {
                       : abrirDia(fecha, "ACCIONES")
                   }
                   className={`
-                    h-full min-h-[7.75rem] w-full cursor-pointer rounded-2xl border
+                    h-full min-h-[7.5rem] sm:min-h-[7.75rem] w-full cursor-pointer rounded-2xl border
                     flex flex-col items-stretch gap-2 text-left
-                    px-2.5 py-2 font-semibold transition
+                    p-2.5 sm:py-2 font-semibold transition
                     hover:shadow-[0_10px_22px_-14px_rgba(29,36,51,0.45)] hover:-translate-y-px
                     ${claseDia(fecha, dia)}
                     ${esHoy ? "ring-2 ring-[#2f5bd3]/60" : ""}
@@ -1307,7 +1356,7 @@ export default function HorarioCRM() {
                   {/* CUERPO: horas trabajadas · horario del turno */}
                   <div className="flex flex-col gap-1">
                     {empleadoId !== "ALL" && dia && dia.minutosTrabajados > 0 && (
-                      <div className="text-[15px] font-bold leading-none text-slate-900">
+                      <div className="text-sm sm:text-[15px] font-bold leading-none text-slate-900">
                         {Math.floor(dia.minutosTrabajados / 60)}h{" "}
                         {String(dia.minutosTrabajados % 60).padStart(2, "0")}m
                       </div>
@@ -1388,6 +1437,7 @@ export default function HorarioCRM() {
             );
           })}
         </div>
+        </div>
       </div>
       )}
 
@@ -1424,6 +1474,38 @@ export default function HorarioCRM() {
                 className="w-full border border-slate-200 rounded-xl px-3 py-2"
               />
             </div>
+
+            <div className="sm:col-span-2">
+              <label className="text-sm text-slate-500">
+                Tipo de días de vacaciones
+              </label>
+              <div className="mt-1 grid grid-cols-2 gap-1 rounded-xl bg-slate-100 p-1 sm:max-w-md">
+                {(
+                  [
+                    ["LABORABLES", "Días laborables"],
+                    ["NATURALES", "Días naturales"],
+                  ] as const
+                ).map(([tipo, texto]) => (
+                  <button
+                    key={tipo}
+                    type="button"
+                    onClick={() => setTipoDiasVacaciones(tipo)}
+                    className={`rounded-lg px-3 py-2 text-sm font-medium transition cursor-pointer ${
+                      tipoDiasVacaciones === tipo
+                        ? "bg-white text-slate-900 shadow-sm"
+                        : "text-slate-500"
+                    }`}
+                  >
+                    {texto}
+                  </button>
+                ))}
+              </div>
+              <p className="mt-1.5 text-xs text-slate-500">
+                {tipoDiasVacaciones === "LABORABLES"
+                  ? "Solo cuentan de lunes a viernes. No se pueden aplicar vacaciones en fines de semana, festivos ni días de baja."
+                  : "Cuenta cada día del calendario, también fines de semana y festivos."}
+              </p>
+            </div>
           </div>
 
           <div className="flex justify-end gap-3 pt-2">
@@ -1445,7 +1527,51 @@ export default function HorarioCRM() {
 
       {/* PANEL SELECCIÓN MÚLTIPLE */}
       {modoSeleccion && (
-        <div className="fixed bottom-4 left-1/2 -translate-x-1/2 z-40 w-[min(960px,calc(100%-2rem))] bg-white rounded-3xl border border-slate-200 shadow-2xl p-4 space-y-3">
+        <>
+        {/* móvil: barra fija sobre el menú inferior */}
+        {!panelAbierto && (
+          <div className="md:hidden fixed inset-x-3 bottom-[calc(5.75rem+env(safe-area-inset-bottom))] z-40 flex items-center gap-3 rounded-2xl bg-slate-900 px-4 py-2.5 text-white shadow-xl">
+            <div className="min-w-0 flex-1 text-sm font-semibold leading-tight">
+              {nSeleccion === 0
+                ? "Toca los días a editar"
+                : `${nSeleccion} ${nSeleccion === 1 ? "día" : "días"}`}
+              <div className="truncate text-[11px] font-normal text-slate-300">
+                {nSeleccion === 0 ? textoDestino : `para ${textoDestino}`}
+              </div>
+            </div>
+            {nSeleccion > 0 && (
+              <button
+                onClick={() => {
+                  setSeleccion(new Set());
+                  setUltimoClick(null);
+                }}
+                className="text-xs text-slate-300 cursor-pointer"
+              >
+                Limpiar
+              </button>
+            )}
+            <button
+              disabled={nSeleccion === 0}
+              onClick={() => setPanelAbierto(true)}
+              className="rounded-xl bg-white px-4 py-2 text-sm font-semibold text-slate-900 disabled:opacity-40 cursor-pointer"
+            >
+              Aplicar
+            </button>
+          </div>
+        )}
+        {panelAbierto && (
+          <div
+            className="md:hidden fixed inset-0 z-[55] bg-slate-900/40"
+            onClick={() => setPanelAbierto(false)}
+          />
+        )}
+        <div
+          className={`fixed z-[60] overflow-y-auto bg-white border border-slate-200 shadow-2xl p-4 space-y-3
+            ${panelAbierto ? "" : "max-md:hidden"}
+            max-md:inset-x-0 max-md:bottom-0 max-md:max-h-[85vh] max-md:rounded-t-3xl max-md:pb-[calc(1.25rem+env(safe-area-inset-bottom))]
+            md:bottom-4 md:left-1/2 md:-translate-x-1/2 md:w-[min(960px,calc(100%-1.5rem))] md:max-h-[85vh] md:rounded-3xl`}
+        >
+          <div className="md:hidden mx-auto h-1 w-10 rounded-full bg-slate-200" />
           <div className="flex flex-wrap items-center justify-between gap-2">
             <div className="text-sm font-semibold text-slate-800">
               {nSeleccion === 0
@@ -1467,6 +1593,13 @@ export default function HorarioCRM() {
                 Limpiar
               </button>
             )}
+            <button
+              onClick={() => setPanelAbierto(false)}
+              className="md:hidden p-1 rounded-lg hover:bg-slate-100 cursor-pointer"
+              aria-label="Cerrar"
+            >
+              <X size={18} />
+            </button>
           </div>
 
           <fieldset
@@ -1527,18 +1660,38 @@ export default function HorarioCRM() {
                 (est) => (
                   <button
                     key={est}
-                    disabled={est === "VACACIONES" && vacacionesRestantes === 0}
+                    disabled={
+                      est === "VACACIONES" &&
+                      (vacacionesRestantes === 0 || fechasVac.length === 0)
+                    }
                     title={
                       est === "VACACIONES" && vacacionesRestantes === 0
                         ? "Ya tiene todos los días de vacaciones aplicados"
+                        : est === "VACACIONES" &&
+                          empleadoId !== "ALL" &&
+                          tipoDiasVacaciones === "LABORABLES"
+                        ? "Vacaciones en días laborables: se saltan fines de semana, festivos y bajas"
                         : undefined
                     }
                     onClick={() =>
-                      aplicarMasivo(
-                        { accion: "MARCAR", estado: est },
-                        `¿Marcar como ${ETIQUETA_ESTADO[est].toLowerCase()}`,
-                        true
-                      )
+                      est === "VACACIONES"
+                        ? aplicarMasivo(
+                            { accion: "MARCAR", estado: est },
+                            "¿Aplicar vacaciones a",
+                            true,
+                            {
+                              fechas: fechasVac,
+                              extra:
+                                vacOmitidos > 0
+                                  ? `Se omiten ${vacOmitidos} (fin de semana, festivo o baja).`
+                                  : undefined,
+                            }
+                          )
+                        : aplicarMasivo(
+                            { accion: "MARCAR", estado: est },
+                            `¿Marcar como ${ETIQUETA_ESTADO[est].toLowerCase()}`,
+                            true
+                          )
                     }
                     className="rounded-xl px-3 py-1.5 text-sm border border-slate-200 bg-white hover:bg-slate-50 transition cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
                   >
@@ -1561,6 +1714,41 @@ export default function HorarioCRM() {
               </button>
             </div>
           </fieldset>
+        </div>
+        </>
+      )}
+
+      {/* CONFIRMACIÓN (en lugar del alert del navegador) */}
+      {confirmacion && (
+        <div
+          className="fixed inset-0 z-[70] flex items-center justify-center bg-slate-900/50 backdrop-blur-[2px] p-4"
+          onMouseDown={(e) => {
+            if (e.target === e.currentTarget) setConfirmacion(null);
+          }}
+        >
+          <div className="w-[380px] max-w-full space-y-4 rounded-3xl bg-white p-6 shadow-2xl">
+            <div className="text-base font-semibold tracking-tight text-slate-900">
+              {confirmacion.texto}
+            </div>
+            <div className="flex justify-end gap-2">
+              <button
+                onClick={() => setConfirmacion(null)}
+                className="rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 cursor-pointer"
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={() => {
+                  const { ok } = confirmacion;
+                  setConfirmacion(null);
+                  ok();
+                }}
+                className="rounded-xl bg-[#2f5bd3] px-4 py-2 text-sm font-medium text-white hover:bg-[#2650bd] cursor-pointer"
+              >
+                {confirmacion.textoOk ?? "Confirmar"}
+              </button>
+            </div>
+          </div>
         </div>
       )}
 
@@ -1912,7 +2100,7 @@ export default function HorarioCRM() {
 
           <div className="flex gap-3 pt-1">
             <button
-              onClick={guardarFichajes}
+              onClick={() => guardarFichajes()}
               disabled={guardandoFichajes}
               className="flex-1 bg-[#2f5bd3] hover:bg-[#2650bd] disabled:opacity-60 text-white rounded-xl py-2.5 text-sm font-medium cursor-pointer"
             >
@@ -2104,6 +2292,7 @@ function Modal({
 type DiaMes = {
   fecha: string;
   estado: string | null;
+  turno: string | null;
   minutosTrabajados: number;
 };
 
@@ -2111,6 +2300,7 @@ type ResumenMes = {
   mes: string; // YYYY-MM
   trabajados: number; // minutos
   objetivo: number; // minutos que tocaban (laborables sin estado)
+  aplicados: number; // minutos de los turnos aplicados en el calendario
   diasLaborables: number;
 };
 
@@ -2180,6 +2370,8 @@ function ControlContrato({
   const anio = Number(mes.slice(0, 4));
 
   const [dias, setDias] = useState<DiaMes[]>([]);
+  // minutos de turnos aplicados en el calendario, por mes (YYYY-MM)
+  const [aplicadosPorMes, setAplicadosPorMes] = useState<Record<string, number>>({});
   const [cargando, setCargando] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [horasInput, setHorasInput] = useState("");
@@ -2216,12 +2408,15 @@ function ControlContrato({
       }
 
       const todos: DiaMes[] = [];
-      respuestas.forEach((r) => {
+      const aplicados: Record<string, number> = {};
+      respuestas.forEach((r, i) => {
         if (r.status !== "fulfilled") return;
+        aplicados[meses[i]] = Number(r.value.data?.minutosAplicadosMes) || 0;
         (r.value.data?.dias ?? []).forEach((d: any) => {
           todos.push({
             fecha: d.fecha,
             estado: d.estado ?? null,
+            turno: d.turno ?? null,
             minutosTrabajados: Number(d.minutosTrabajados) || 0,
           });
         });
@@ -2244,6 +2439,7 @@ function ControlContrato({
       if (cancelado) return;
 
       setNominaMin(nomina);
+      setAplicadosPorMes(aplicados);
       setDias(todos);
       setCargando(false);
     };
@@ -2267,6 +2463,7 @@ function ControlContrato({
         mes: clave,
         trabajados: 0,
         objetivo: 0,
+        aplicados: aplicadosPorMes[clave] ?? 0,
         diasLaborables: 0,
       });
     }
@@ -2275,6 +2472,7 @@ function ControlContrato({
     let objetivo = 0;
     let diasRestantes = 0; // laborables sin estado después de hoy
     let diasLaborablesAnio = 0; // laborables sin estado de todo el año
+    let diasSinTurno = 0; // laborables sin estado y sin turno aplicado
 
     dias.forEach((d) => {
       const resumen = porMes.get(d.fecha.slice(0, 7));
@@ -2289,6 +2487,7 @@ function ControlContrato({
         resumen.diasLaborables += 1;
         objetivo += minutosDia;
         diasLaborablesAnio += 1;
+        if (!d.turno) diasSinTurno += 1;
         if (d.fecha > hoy) diasRestantes += 1;
       }
     });
@@ -2304,8 +2503,13 @@ function ControlContrato({
         ? 0
         : Number(hoy.slice(5, 7));
 
+    const aplicadosAnio = meses.reduce((t, m) => t + m.aplicados, 0);
+
     return {
       meses,
+      aplicadosAnio,
+      diasSinTurno,
+      diasLaborablesAnio,
       trabajados,
       brutos,
       objetivo,
@@ -2318,7 +2522,7 @@ function ControlContrato({
       mesesTranscurridos,
       hoyMes: hoy.slice(0, 7),
     };
-  }, [dias, anio, horasContratadasSemana, descuento]);
+  }, [dias, aplicadosPorMes, anio, horasContratadasSemana, descuento]);
 
   const horasSemana = leerHoras(horasInput);
   const proyeccion =
@@ -2331,6 +2535,20 @@ function ControlContrato({
   const contratoRecomendado =
     proyeccion !== null && calculo.semanasAnio > 0
       ? proyeccion / 60 / calculo.semanasAnio
+      : null;
+
+  // Jornada que le corresponde según TODAS las horas aplicadas en el año:
+  // jornada completa = 40 h/semana = 8 h por cada día laborable del año
+  // (las vacaciones, festivos, libres y bajas ya marcados no cuentan).
+  const minutosCompleta =
+    calculo.diasLaborablesAnio * ((JORNADA_COMPLETA_H * 60) / 5);
+  const jornadaCorresponde =
+    minutosCompleta > 0
+      ? (calculo.aplicadosAnio / minutosCompleta) * JORNADA_COMPLETA_H
+      : null;
+  const difJornada =
+    jornadaCorresponde !== null
+      ? jornadaCorresponde - horasContratadasSemana
       : null;
 
   /* ---------- Render ---------- */
@@ -2403,10 +2621,89 @@ function ControlContrato({
         </div>
       </div>
 
+      {/* JORNADA QUE LE CORRESPONDE (según lo aplicado en el calendario) */}
+      <div className="rounded-3xl border border-slate-200/70 bg-white p-5 shadow-[0_14px_34px_-24px_rgba(29,36,51,0.3)]">
+        <h3 className="text-base font-bold text-slate-900">
+          Jornada que le corresponde en {anio}
+        </h3>
+        <p className="mt-1 text-sm text-slate-500">
+          Suma todas las horas de los turnos aplicados en el calendario del año
+          y las compara con una jornada completa de {JORNADA_COMPLETA_H} h/semana
+          (sin contar vacaciones, festivos, libres ni bajas).
+        </p>
+
+        {jornadaCorresponde === null ? (
+          <p className="mt-3 text-sm text-slate-500">
+            No hay días laborables en {anio}.
+          </p>
+        ) : (
+          <div className="mt-4 space-y-3">
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+              <Dato
+                titulo="Horas aplicadas en el año"
+                valor={minutosAHoras(calculo.aplicadosAnio)}
+                detalle="Suma de todos los turnos"
+              />
+              <Dato
+                titulo={`Jornada completa (${JORNADA_COMPLETA_H} h)`}
+                valor={minutosAHoras(minutosCompleta)}
+                detalle={`${calculo.diasLaborablesAnio} días laborables × ${aHorasDecimal(
+                  (JORNADA_COMPLETA_H * 60) / 5
+                )} h`}
+              />
+              <Dato
+                titulo="Contrato actual"
+                valor={`${aHorasDecimal(horasContratadasSemana * 60)} h`}
+                detalle={`${porcentaje(horasContratadasSemana)} % de jornada`}
+              />
+            </div>
+
+            <div className="rounded-2xl bg-[#e3eafb] px-4 py-3 text-[#1f3f9c]">
+              <div className="text-[11px] font-semibold uppercase tracking-wider">
+                Le corresponde una jornada de
+              </div>
+              <div className="mt-0.5 text-2xl font-bold">
+                {jornadaCorresponde.toLocaleString("es-ES", {
+                  maximumFractionDigits: 2,
+                })}{" "}
+                h / semana
+              </div>
+              <div className="mt-1 text-lg font-bold">
+                {porcentaje(jornadaCorresponde)} % de jornada
+              </div>
+              <div className="mt-0.5 text-xs">
+                {difJornada !== null && Math.abs(difJornada) < 0.05
+                  ? "El contrato actual cuadra con las horas aplicadas."
+                  : difJornada !== null && difJornada > 0
+                  ? `Habría que subir el contrato ${aHorasDecimal(
+                      difJornada * 60
+                    )} h a la semana (+${porcentaje(difJornada)} puntos).`
+                  : difJornada !== null
+                  ? `Habría que bajar el contrato ${aHorasDecimal(
+                      Math.abs(difJornada) * 60
+                    )} h a la semana (-${porcentaje(Math.abs(difJornada))} puntos).`
+                  : null}
+              </div>
+            </div>
+
+            {calculo.diasSinTurno > 0 && (
+              <div className="flex items-start gap-2 rounded-2xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
+                <AlertCircle size={16} className="mt-px shrink-0" />
+                <span>
+                  Hay {calculo.diasSinTurno} días laborables sin turno
+                  aplicado: no suman horas. Si los rellenas, el resultado
+                  cambia.
+                </span>
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+
       {/* CALCULADORA */}
       <div className="rounded-3xl border border-slate-200/70 bg-white p-5 shadow-[0_14px_34px_-24px_rgba(29,36,51,0.3)]">
         <h3 className="text-base font-bold text-slate-900">
-          Contrato que le corresponde
+          Simular horas reales hasta fin de año
         </h3>
 
         {calculo.semanasRestantes === 0 ? (
@@ -2561,10 +2858,11 @@ function ControlContrato({
         </h3>
 
         <div className="overflow-x-auto">
-          <table className="w-full min-w-[420px] text-sm">
+          <table className="w-full min-w-[480px] text-sm">
             <thead>
               <tr className="text-left text-[11px] font-semibold uppercase tracking-wider text-slate-400">
                 <th className="py-2 pr-3">Mes</th>
+                <th className="py-2 pr-3 text-right">Aplicadas</th>
                 <th className="py-2 pr-3 text-right">Trabajadas</th>
                 <th className="py-2 pr-3 text-right">Tocaban</th>
                 <th className="py-2 text-right">Diferencia</th>
@@ -2588,6 +2886,9 @@ function ControlContrato({
                           en curso
                         </span>
                       )}
+                    </td>
+                    <td className="py-2 pr-3 text-right">
+                      {minutosAHoras(m.aplicados)}
                     </td>
                     <td className="py-2 pr-3 text-right">
                       {futuro ? "—" : minutosAHoras(m.trabajados)}
